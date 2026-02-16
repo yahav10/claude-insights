@@ -1,0 +1,28 @@
+{
+  "name": "claude-insights",
+  "version": "1.0.0",
+  "description": "CLI tool to analyze Claude Code /insight reports and generate actionable files",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "claude-insights": "./bin/claude-insights.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "claude",
+    "insights",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3"
+  }
+}
