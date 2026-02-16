@@ -57,8 +57,13 @@ program
     console.log('\nNext steps:');
     console.log('  1. Read insights-README.md for placement instructions');
     console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
-    console.log('  3. Merge settings-insights.json into .claude/settings.json');
-    console.log('  4. Copy skills to .claude/skills/ and test with /insights-review');
+    if (Object.keys(output.settingsJson).length > 0) {
+      console.log('  3. Merge settings-insights.json into .claude/settings.json');
+    }
+    if (output.skills.length > 0) {
+      const firstSkill = output.skills[0].filename.replace('.SKILL.md', '');
+      console.log(`  ${Object.keys(output.settingsJson).length > 0 ? '4' : '3'}. Copy skills to .claude/skills/ and test with /${firstSkill}`);
+    }
   });
 
 async function promptForOutputDir(data: ReportData): Promise<string> {

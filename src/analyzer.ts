@@ -140,15 +140,8 @@ function buildSettings(data: ReportData): object {
     }
   }
 
-  // Default hooks based on report analysis (Vue/TS project)
-  return {
-    hooks: {
-      postEdit: {
-        command: 'npx vue-tsc --noEmit --pretty 2>&1 | head -20',
-        description: 'Type-check after edits to catch issues early',
-      },
-    },
-  };
+  // No hooks feature found in report — return empty config
+  return {};
 }
 
 function buildSkills(data: ReportData): SkillFile[] {
@@ -168,9 +161,9 @@ function buildSkills(data: ReportData): SkillFile[] {
       ? matchingPattern.prompt
       : `Before addressing issues related to "${friction.title}", first:\n1. Read the relevant files and understand the existing patterns\n2. List your assumptions and constraints for confirmation\n3. Propose your approach before implementing`;
 
-    const rules = matchingRule
-      ? matchingRule.code
-      : friction.description;
+    const rulesSection = matchingRule
+      ? `\n## Rules\n\n${matchingRule.code}\n`
+      : '';
 
     skills.push({
       filename,
@@ -182,11 +175,7 @@ description: ${friction.title}
 ## Instructions
 
 ${instructions}
-
-## Rules
-
-${rules}
-
+${rulesSection}
 ## Why This Exists
 
 ${friction.description}
