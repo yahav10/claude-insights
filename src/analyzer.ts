@@ -1,48 +1,43 @@
 import type { ReportData, AnalyzerOutput, TodoItem, SkillFile } from './types.js';
 
 export function analyze(data: ReportData): AnalyzerOutput {
-  const todos = buildTodos(data);
+  const skills = buildSkills(data);
+  const todos = buildTodos(data, skills);
   const claudeMdAdditions = buildClaudeMdAdditions(data);
   const settingsJson = buildSettings(data);
-  const skills = buildSkills(data);
-  const readmeContent = buildReadme();
+  const readmeContent = buildReadme(skills);
   return { todos, claudeMdAdditions, settingsJson, skills, readmeContent };
 }
 
-function buildTodos(data: ReportData): TodoItem[] {
+/** Derive a kebab-case skill name from a friction title */
+function toSkillName(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+}
+
+function buildTodos(data: ReportData, skills: SkillFile[]): TodoItem[] {
   const todos: TodoItem[] = [];
 
-  // Friction-derived tasks (High priority)
-  for (const friction of data.frictions) {
-    const title = friction.title.toLowerCase();
-    if (title.includes('premature') || title.includes('verification')) {
-      todos.push({
-        task: 'Add verify-first rule to CLAUDE.md + create insights-review skill',
-        steps: '1. Copy verify-first rule from CLAUDE.md-additions.md to your CLAUDE.md\n2. Copy insights-review.SKILL.md to .claude/skills/\n3. Test: run /insights-review on your next task',
-        priority: 'High',
-        estTime: '5 min',
-        expectedWin: '~30% fewer wrong approaches (currently 46 incidents)',
-        source: 'friction',
-      });
-    } else if (title.includes('css') || title.includes('styling')) {
-      todos.push({
-        task: 'Create CSS guardrails skill + add Shadow DOM rules to CLAUDE.md',
-        steps: '1. Copy CSS & Styling rules from CLAUDE.md-additions.md\n2. Copy fix-css.SKILL.md to .claude/skills/\n3. Test: run /fix-css on your next CSS task',
-        priority: 'High',
-        estTime: '5 min',
-        expectedWin: '~50% fewer CSS iterations (currently 11+ sessions affected)',
-        source: 'friction',
-      });
-    } else if (title.includes('debug') || title.includes('root cause') || title.includes('wrong')) {
-      todos.push({
-        task: 'Create structured debugging skill + add debugging rules to CLAUDE.md',
-        steps: '1. Copy Debugging rules from CLAUDE.md-additions.md\n2. Copy debug-structured.SKILL.md to .claude/skills/\n3. Test: run /debug-structured on your next bug',
-        priority: 'High',
-        estTime: '5 min',
-        expectedWin: '~40% fewer wrong root cause investigations',
-        source: 'friction',
-      });
-    }
+  // Friction-derived tasks (High priority) — one per friction, linked to its generated skill
+  for (let i = 0; i < data.frictions.length; i++) {
+    const friction = data.frictions[i];
+    const skill = skills[i];
+    const skillCmd = skill ? `/${toSkillName(friction.title)}` : '';
+    todos.push({
+      task: `Address friction: "${friction.title}"`,
+      steps: skill
+        ? `1. Copy relevant rules from CLAUDE.md-additions.md to your CLAUDE.md\n2. Copy ${skill.filename} to .claude/skills/\n3. Test: run ${skillCmd} on your next relevant task`
+        : `1. Review the friction description\n2. Add guardrail rules to your CLAUDE.md`,
+      priority: 'High',
+      estTime: '5 min',
+      expectedWin: `Reduces "${friction.title}" friction pattern`,
+      source: 'friction',
+    });
   }
 
   // CLAUDE.md item tasks (High priority)
@@ -159,119 +154,96 @@ function buildSettings(data: ReportData): object {
 function buildSkills(data: ReportData): SkillFile[] {
   const skills: SkillFile[] = [];
 
-  // 1. insights-review skill — verify-first workflow
-  const verifyPattern = data.patterns.find(p =>
-    p.title.toLowerCase().includes('premature') || p.title.toLowerCase().includes('friction')
-  );
-  const verifyFriction = data.frictions.find(f =>
-    f.title.toLowerCase().includes('premature') || f.title.toLowerCase().includes('verification')
-  );
+  // Generate one skill per friction — fully dynamic
+  for (const friction of data.frictions) {
+    const skillName = toSkillName(friction.title);
+    const filename = `${skillName}.SKILL.md`;
 
-  skills.push({
-    filename: 'insights-review.SKILL.md',
-    content: `---
-name: insights-review
-description: Verify assumptions against codebase before proposing changes
+    // Try to find a matching pattern (prompt to use as instructions)
+    const matchingPattern = findBestMatch(friction.title, data.patterns.map(p => ({ text: p.title, item: p })));
+    // Try to find a matching CLAUDE.md rule
+    const matchingRule = findBestMatch(friction.title, data.claudeMdItems.map(c => ({ text: c.code, item: c })));
+
+    const instructions = matchingPattern
+      ? matchingPattern.prompt
+      : `Before addressing issues related to "${friction.title}", first:\n1. Read the relevant files and understand the existing patterns\n2. List your assumptions and constraints for confirmation\n3. Propose your approach before implementing`;
+
+    const rules = matchingRule
+      ? matchingRule.code
+      : friction.description;
+
+    skills.push({
+      filename,
+      content: `---
+name: ${skillName}
+description: ${friction.title}
 ---
 
 ## Instructions
 
-${verifyPattern?.prompt || 'Before making any changes, first: 1) Find 2-3 similar implementations in this codebase and show me the patterns they use, 2) Identify any constraints (Shadow DOM, scoped styles, existing test patterns), 3) Propose your approach referencing those patterns. Only after I approve, start implementing.'}
-
-## Why This Exists
-
-${verifyFriction?.description || 'Claude frequently proposes fixes before verifying them against the codebase, leading to wrong approaches.'}
-
-## Examples of What Goes Wrong
-
-${verifyFriction?.examples.map(e => `- ${e}`).join('\n') || '- Proposing solutions without checking existing patterns'}
-`,
-  });
-
-  // 2. fix-css skill — CSS guardrails
-  const cssFriction = data.frictions.find(f =>
-    f.title.toLowerCase().includes('css') || f.title.toLowerCase().includes('styling')
-  );
-  const cssPattern = data.patterns.find(p =>
-    p.title.toLowerCase().includes('css') || p.title.toLowerCase().includes('scope')
-  );
-  const cssCmdItem = data.claudeMdItems.find(item =>
-    item.code.toLowerCase().includes('css') || item.code.toLowerCase().includes('shadow dom')
-  );
-
-  skills.push({
-    filename: 'fix-css.SKILL.md',
-    content: `---
-name: fix-css
-description: CSS fixes with Shadow DOM awareness and scoping guardrails
----
-
-## Instructions
-
-When fixing CSS/styling issues, follow these constraints:
-
-1. **Do NOT modify any global or shared styles** — scope changes narrowly
-2. **Before applying**, list which other components could be affected by checking CSS inheritance and selector specificity
-3. **Use the most narrowly-scoped selector possible** — prefer component-scoped styles over global overrides
-4. **Verify your fix doesn't regress** other components (flyout tabs, modals, sibling views)
-5. **CSS custom properties don't cross Shadow DOM boundaries** — verify this before relying on them
-
-${cssPattern?.prompt ? '\n### Suggested prompt for CSS tasks\n\n' + cssPattern.prompt : ''}
+${instructions}
 
 ## Rules
 
-${cssCmdItem?.code || 'When working with CSS in Vue components (especially Shadow DOM, flyouts, and scoped styles): 1) CSS custom properties don\'t cross Shadow DOM boundaries, 2) Always scope CSS fixes narrowly to avoid breaking other components, 3) Test that changes don\'t regress other flyout tabs or views.'}
+${rules}
 
 ## Why This Exists
 
-${cssFriction?.description || 'CSS and visual styling tasks are especially painful, with Claude cycling through broken approaches around Shadow DOM boundaries, scoped selectors, and icon sizing.'}
+${friction.description}
 
 ## Examples of What Goes Wrong
 
-${cssFriction?.examples.map(e => `- ${e}`).join('\n') || '- Broad CSS fixes breaking other components'}
+${friction.examples.length > 0 ? friction.examples.map(e => `- ${e}`).join('\n') : '- No specific examples extracted'}
 `,
-  });
-
-  // 3. debug-structured skill — structured debugging
-  const debugFriction = data.frictions.find(f =>
-    f.title.toLowerCase().includes('debug') || f.title.toLowerCase().includes('root cause')
-  );
-  const debugPattern = data.patterns.find(p =>
-    p.title.toLowerCase().includes('debug') || p.title.toLowerCase().includes('reproduction')
-  );
-  const debugCmdItem = data.claudeMdItems.find(item =>
-    item.code.toLowerCase().includes('debug') || item.code.toLowerCase().includes('root cause')
-  );
-
-  skills.push({
-    filename: 'debug-structured.SKILL.md',
-    content: `---
-name: debug-structured
-description: Structured debugging protocol - reproduce first, verify before fixing
----
-
-## Instructions
-
-${debugPattern?.prompt || 'Debug this issue using a structured approach: 1) First, can we reproduce it locally? Try to reproduce before theorizing. 2) If not reproducible, what exact conditions trigger it? 3) Add diagnostic logging to ONLY the specific code path involved. 4) Do NOT propose a fix until we have confirmed evidence of the root cause.'}
-
-## Rules
-
-${debugCmdItem?.code || 'When debugging production or intermittent issues, do NOT jump to conclusions about root cause. First: reproduce locally. Second: add targeted diagnostic logging. Third: only propose a fix when the root cause is confirmed with evidence.'}
-
-## Why This Exists
-
-${debugFriction?.description || 'Claude often locks onto an incorrect hypothesis early and spends significant effort debugging the wrong thing.'}
-
-## Examples of What Goes Wrong
-
-${debugFriction?.examples.map(e => `- ${e}`).join('\n') || '- Jumping to wrong root cause hypotheses'}
-`,
-  });
+    });
+  }
 
   return skills;
 }
 
-function buildReadme(): string {
+/** Find the best matching item by checking for shared significant words */
+function findBestMatch<T>(title: string, candidates: { text: string; item: T }[]): T | undefined {
+  const titleWords = significantWords(title);
+  let bestMatch: T | undefined;
+  let bestScore = 0;
+
+  for (const candidate of candidates) {
+    const candidateWords = significantWords(candidate.text);
+    const overlap = titleWords.filter(w => candidateWords.includes(w)).length;
+    if (overlap > bestScore) {
+      bestScore = overlap;
+      bestMatch = candidate.item;
+    }
+  }
+
+  return bestScore >= 1 ? bestMatch : undefined;
+}
+
+/** Extract significant words (skip common stop words) */
+function significantWords(text: string): string[] {
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+    'not', 'no', 'without', 'before', 'after', 'about', 'that', 'this', 'it']);
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
+}
+
+function buildReadme(skills: SkillFile[]): string {
+  const skillRows = skills.map(s => {
+    const name = s.filename.replace('.SKILL.md', '');
+    return `| \`.claude/skills/${s.filename}\` | \`/${name}\` skill | Copy to your project's \`.claude/skills/\` |`;
+  }).join('\n');
+
+  const skillTests = skills.map(s => {
+    const name = s.filename.replace('.SKILL.md', '');
+    // Extract description from frontmatter
+    const descMatch = s.content.match(/description:\s*(.+)/);
+    const desc = descMatch ? descMatch[1].trim() : name;
+    return `- \`/${name}\` — ${desc}`;
+  }).join('\n');
+
+  const firstSkillName = skills.length > 0 ? skills[0].filename.replace('.SKILL.md', '') : 'insights-review';
+
   return `# Insights Output — Placement Guide
 
 ## Generated Files
@@ -281,21 +253,17 @@ function buildReadme(): string {
 | \`CLAUDE.md-additions.md\` | Rules for Claude based on your friction patterns | Copy contents into your project's root \`CLAUDE.md\` |
 | \`insights-todo.md\` | Prioritized task list with steps | Keep as reference, work through tasks |
 | \`.claude/settings-insights.json\` | Hook configurations | Merge into your \`.claude/settings.json\` |
-| \`.claude/skills/insights-review.SKILL.md\` | Verify-first workflow skill | Copy to your project's \`.claude/skills/\` |
-| \`.claude/skills/fix-css.SKILL.md\` | CSS guardrails skill | Copy to your project's \`.claude/skills/\` |
-| \`.claude/skills/debug-structured.SKILL.md\` | Structured debugging skill | Copy to your project's \`.claude/skills/\` |
+${skillRows}
 
 ## Quick Start
 
 1. **CLAUDE.md**: Open \`CLAUDE.md-additions.md\`, copy the rules you want into your project's \`CLAUDE.md\`
 2. **Settings**: Open \`.claude/settings-insights.json\`, merge the hooks config into your existing \`.claude/settings.json\`
 3. **Skills**: Copy the \`.claude/skills/*.SKILL.md\` files into your project's \`.claude/skills/\` directory
-4. **Test**: Start a new Claude Code session and try \`/insights-review\` on your next task
+4. **Test**: Start a new Claude Code session and try \`/${firstSkillName}\` on your next task
 
 ## Testing Skills
 
-- \`/insights-review\` — Forces Claude to verify assumptions before proposing changes
-- \`/fix-css\` — Applies CSS guardrails (Shadow DOM awareness, narrow scoping)
-- \`/debug-structured\` — Enforces structured debugging (reproduce first, evidence-based fixes)
+${skillTests}
 `;
 }
