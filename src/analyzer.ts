@@ -208,7 +208,15 @@ description: CSS fixes with Shadow DOM awareness and scoping guardrails
 
 ## Instructions
 
-${cssPattern?.prompt || 'Fix the CSS issue with these constraints: 1) Do NOT modify any global/shared styles, 2) Verify your fix doesn\'t affect other components by checking their CSS inheritance, 3) Use the most narrowly-scoped selector possible, 4) Show me which other components could be affected before applying.'}
+When fixing CSS/styling issues, follow these constraints:
+
+1. **Do NOT modify any global or shared styles** — scope changes narrowly
+2. **Before applying**, list which other components could be affected by checking CSS inheritance and selector specificity
+3. **Use the most narrowly-scoped selector possible** — prefer component-scoped styles over global overrides
+4. **Verify your fix doesn't regress** other components (flyout tabs, modals, sibling views)
+5. **CSS custom properties don't cross Shadow DOM boundaries** — verify this before relying on them
+
+${cssPattern?.prompt ? '\n### Suggested prompt for CSS tasks\n\n' + cssPattern.prompt : ''}
 
 ## Rules
 
