@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Minimal Test Report</title></head>
+<body>
+  <h1>Minimal Report</h1>
+
+  <div class="friction-category">
+    <div class="friction-title">Build Failures</div>
+    <div class="friction-desc">Builds failed due to missing imports.</div>
+    <ul class="friction-examples">
+      <li>When adding new modules, import paths were not updated</li>
+    </ul>
+  </div>
+
+  <div class="claude-md-item">
+    <div class="cmd-code">Always verify import paths after moving or adding files</div>
+    <div class="cmd-why">Prevents broken builds from stale imports</div>
+  </div>
+</body>
+</html>

@@ -106,7 +106,7 @@ export interface SkillFile {
 export interface AnalyzerOutput {
   todos: TodoItem[];
   claudeMdAdditions: string;
-  settingsJson: object;
+  settingsJson: Record<string, unknown>;
   skills: SkillFile[];
   readmeContent: string;
 }

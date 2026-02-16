@@ -7,22 +7,50 @@
   "bin": {
     "claude-insights": "./bin/claude-insights.js"
   },
+  "files": [
+    "dist/*.js",
+    "dist/*.d.ts",
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "claude",
+    "claude-code",
     "insights",
-    "cli"
+    "cli",
+    "skills"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yahav10/claude-insights.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yahav10/claude-insights/issues"
+  },
+  "homepage": "https://github.com/yahav10/claude-insights#readme",
   "dependencies": {
     "cheerio": "^1.2.0",
     "commander": "^14.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.2.3",
-    "typescript": "^5.9.3"
+    "eslint": "^10.0.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.0",
+    "vitest": "^4.0.18"
   }
 }

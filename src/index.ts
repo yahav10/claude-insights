@@ -20,49 +20,60 @@ program
   .argument('<file>', 'Path to the report.html file')
   .option('-o, --output-dir <path>', 'Output directory (skips interactive prompt)')
   .action(async (file: string, opts: { outputDir?: string }) => {
-    // 1. Parse
-    const filePath = resolve(file);
-    if (!existsSync(filePath)) {
-      console.error(`Error: File not found: ${filePath}`);
+    try {
+      // 1. Parse
+      const filePath = resolve(file);
+      if (!existsSync(filePath)) {
+        console.error(`Error: File not found: ${filePath}`);
+        process.exit(1);
+      }
+
+      console.log('\nParsing report...');
+      const data = parseReport(filePath);
+
+      const messagesStat = data.stats.find(s => s.label.toLowerCase() === 'messages');
+      console.log(`\n✓ Parsed report: ${messagesStat?.value ?? '?'} messages, ${data.subtitle}`);
+      console.log(`  ${data.frictions.length} friction areas, ${data.wins.length} strengths, ${data.claudeMdItems.length} CLAUDE.md suggestions`);
+
+      if (data.frictions.length === 0 && data.claudeMdItems.length === 0) {
+        console.warn('\nWarning: No frictions or CLAUDE.md suggestions found in the report.');
+        console.warn('The generated output will be minimal. The report format may have changed.\n');
+      }
+
+      // 2. Analyze
+      const output = analyze(data);
+      console.log(`✓ Analyzed: ${output.todos.length} tasks, ${output.skills.length} skills generated`);
+
+      // 3. Determine output dir
+      let outputDir: string;
+      if (opts.outputDir) {
+        outputDir = resolve(opts.outputDir);
+      } else {
+        outputDir = await promptForOutputDir(data);
+      }
+
+      // 4. Generate
+      const files = generate(output, outputDir);
+      console.log(`\n✓ Generated ${files.length} files in ${outputDir}/:`);
+      for (const f of files) {
+        const relative = f.replace(outputDir + '/', '');
+        console.log(`  - ${relative}`);
+      }
+
+      console.log('\nNext steps:');
+      console.log('  1. Read insights-README.md for placement instructions');
+      console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
+      if (Object.keys(output.settingsJson).length > 0) {
+        console.log('  3. Merge settings-insights.json into .claude/settings.json');
+      }
+      if (output.skills.length > 0) {
+        const firstSkill = output.skills[0].filename.replace('.SKILL.md', '');
+        console.log(`  ${Object.keys(output.settingsJson).length > 0 ? '4' : '3'}. Copy skills to .claude/skills/ and test with /${firstSkill}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nError: ${message}`);
       process.exit(1);
-    }
-
-    console.log('\nParsing report...');
-    const data = parseReport(filePath);
-
-    const messagesStat = data.stats.find(s => s.label.toLowerCase() === 'messages');
-    console.log(`\n✓ Parsed report: ${messagesStat?.value ?? '?'} messages, ${data.subtitle}`);
-    console.log(`  ${data.frictions.length} friction areas, ${data.wins.length} strengths, ${data.claudeMdItems.length} CLAUDE.md suggestions`);
-
-    // 2. Analyze
-    const output = analyze(data);
-    console.log(`✓ Analyzed: ${output.todos.length} tasks, ${output.skills.length} skills generated`);
-
-    // 3. Determine output dir
-    let outputDir: string;
-    if (opts.outputDir) {
-      outputDir = resolve(opts.outputDir);
-    } else {
-      outputDir = await promptForOutputDir(data);
-    }
-
-    // 4. Generate
-    const files = generate(output, outputDir);
-    console.log(`\n✓ Generated ${files.length} files in ${outputDir}/:`);
-    for (const f of files) {
-      const relative = f.replace(outputDir + '/', '');
-      console.log(`  - ${relative}`);
-    }
-
-    console.log('\nNext steps:');
-    console.log('  1. Read insights-README.md for placement instructions');
-    console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
-    if (Object.keys(output.settingsJson).length > 0) {
-      console.log('  3. Merge settings-insights.json into .claude/settings.json');
-    }
-    if (output.skills.length > 0) {
-      const firstSkill = output.skills[0].filename.replace('.SKILL.md', '');
-      console.log(`  ${Object.keys(output.settingsJson).length > 0 ? '4' : '3'}. Copy skills to .claude/skills/ and test with /${firstSkill}`);
     }
   });
 

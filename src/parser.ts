@@ -3,7 +3,34 @@ import { readFileSync } from 'node:fs';
 import type { ReportData } from './types.js';
 
 export function parseReport(filePath: string): ReportData {
-  const html = readFileSync(filePath, 'utf-8');
+  let html: string;
+  try {
+    html = readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    throw new Error(`Could not read report file: ${filePath}. ${(err as Error).message}`, { cause: err });
+  }
+  const data = parseReportHtml(html);
+  validateParsedData(data, filePath);
+  return data;
+}
+
+function validateParsedData(data: ReportData, source: string): void {
+  const warnings: string[] = [];
+  if (!data.title) warnings.push('No report title found');
+  if (data.frictions.length === 0) warnings.push('No friction categories found');
+  if (data.claudeMdItems.length === 0) warnings.push('No CLAUDE.md suggestions found');
+
+  const hasKnownStructure = data.frictions.length > 0 || data.wins.length > 0 || data.stats.length > 0;
+  if (!hasKnownStructure) {
+    warnings.push('This does not appear to be a recognized Claude Code /insight report format');
+  }
+
+  for (const warning of warnings) {
+    console.warn(`Warning: ${warning} in ${source}. The report format may have changed.`);
+  }
+}
+
+export function parseReportHtml(html: string): ReportData {
   const $ = cheerio.load(html);
 
   const title = $('h1').first().text().trim();

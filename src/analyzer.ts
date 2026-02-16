@@ -1,4 +1,4 @@
-import type { ReportData, AnalyzerOutput, TodoItem, SkillFile } from './types.js';
+import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard } from './types.js';
 
 export function analyze(data: ReportData): AnalyzerOutput {
   const skills = buildSkills(data);
@@ -9,18 +9,25 @@ export function analyze(data: ReportData): AnalyzerOutput {
   return { todos, claudeMdAdditions, settingsJson, skills, readmeContent };
 }
 
-/** Derive a kebab-case skill name from a friction title */
-function toSkillName(title: string): string {
+/** Derive a short kebab-case skill name, stripping filler adjectives */
+export function toSkillName(title: string): string {
+  const fillerWords = new Set([
+    'repeated', 'incorrect', 'missing', 'wrong', 'premature', 'frequent', 'common',
+    'excessive', 'unnecessary', 'various', 'multiple',
+    'and', 'the', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'without',
+  ]);
   return title
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
+    .split(/\s+/)
+    .filter(w => w.length > 0 && !fillerWords.has(w))
+    .join('-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 40);
 }
 
-function buildTodos(data: ReportData, skills: SkillFile[]): TodoItem[] {
+export function buildTodos(data: ReportData, skills: SkillFile[]): TodoItem[] {
   const todos: TodoItem[] = [];
 
   // Friction-derived tasks (High priority) — one per friction, linked to its generated skill
@@ -82,7 +89,7 @@ function buildTodos(data: ReportData, skills: SkillFile[]): TodoItem[] {
   return todos;
 }
 
-function buildClaudeMdAdditions(data: ReportData): string {
+export function buildClaudeMdAdditions(data: ReportData): string {
   // Categorize CLAUDE.md items by detecting keywords in their code
   const sections: Record<string, { code: string; why: string }[]> = {
     'General Rules': [],
@@ -121,7 +128,7 @@ function buildClaudeMdAdditions(data: ReportData): string {
   return md;
 }
 
-function buildSettings(data: ReportData): object {
+export function buildSettings(data: ReportData): Record<string, unknown> {
   // Extract hook configurations from feature examples
   const hooksFeature = data.features.find(f => f.title.toLowerCase().includes('hook'));
 
@@ -144,45 +151,54 @@ function buildSettings(data: ReportData): object {
   return {};
 }
 
-function buildSkills(data: ReportData): SkillFile[] {
+export function buildSkills(data: ReportData): SkillFile[] {
   const skills: SkillFile[] = [];
 
-  // Generate one skill per friction — fully dynamic
   for (const friction of data.frictions) {
     const skillName = toSkillName(friction.title);
     const filename = `${skillName}.SKILL.md`;
 
-    // Try to find a matching pattern (prompt to use as instructions)
     const matchingPattern = findBestMatch(friction.title, data.patterns.map(p => ({ text: p.title, item: p })));
-    // Try to find a matching CLAUDE.md rule
     const matchingRule = findBestMatch(friction.title, data.claudeMdItems.map(c => ({ text: c.code, item: c })));
 
-    const instructions = matchingPattern
-      ? matchingPattern.prompt
-      : `Before addressing issues related to "${friction.title}", first:\n1. Read the relevant files and understand the existing patterns\n2. List your assumptions and constraints for confirmation\n3. Propose your approach before implementing`;
+    const description = buildTriggerDescription(friction);
+    const steps = buildSkillSteps(friction, matchingPattern);
+    const rules = buildSkillRules(matchingRule, friction);
+    const whenToUse = buildWhenToUse(friction);
+    const examples = buildSkillExamples(friction.examples);
+    const checklist = buildVerificationChecklist(friction);
 
-    const rulesSection = matchingRule
-      ? `\n## Rules\n\n${matchingRule.code}\n`
-      : '';
+    // Format description: use YAML block scalar for multi-line, inline for single-line
+    const descYaml = description.includes('\n')
+      ? `|\n  ${description.replace(/\n/g, '\n  ')}`
+      : description;
 
     skills.push({
       filename,
       content: `---
 name: ${skillName}
-description: ${friction.title}
+description: ${descYaml}
 ---
 
-## Instructions
+## When to Use This Skill
 
-${instructions}
-${rulesSection}
-## Why This Exists
+${whenToUse}
+
+## Steps
+
+${steps}
+
+## Rules
+
+${rules}
+
+${examples}## Verification Checklist
+
+${checklist}
+
+## Why This Skill Exists
 
 ${friction.description}
-
-## Examples of What Goes Wrong
-
-${friction.examples.length > 0 ? friction.examples.map(e => `- ${e}`).join('\n') : '- No specific examples extracted'}
 `,
     });
   }
@@ -190,8 +206,217 @@ ${friction.examples.length > 0 ? friction.examples.map(e => `- ${e}`).join('\n')
   return skills;
 }
 
+/** Build a multi-line trigger-rich description with scenario phrases */
+export function buildTriggerDescription(friction: FrictionCategory): string {
+  let desc = `Use when encountering ${friction.title.toLowerCase()}`;
+
+  // Extract scenario phrases from examples for richer triggers
+  const scenarios = friction.examples
+    .map(extractScenarioPhrase)
+    .filter((s): s is string => s !== null)
+    .slice(0, 3);
+
+  if (scenarios.length > 0) {
+    desc += `,\nespecially ${scenarios.join(', ')}`;
+  } else {
+    // Fallback to keyword-based triggers if no parseable scenarios
+    const titleWords = significantWords(friction.title);
+    const triggerWords = extractTriggerTerms(friction)
+      .filter(w => !titleWords.includes(w));
+    const uniqueTerms = [...new Set(triggerWords)].slice(0, 5);
+    if (uniqueTerms.length > 0) {
+      desc += `,\ninvolving ${uniqueTerms.join(', ')}`;
+    }
+  }
+
+  desc += '.';
+  return desc;
+}
+
+/** Extract a short scenario phrase from a friction example */
+export function extractScenarioPhrase(example: string): string | null {
+  // Match "When [doing X], Claude..." or "When [doing X], the..."
+  const whenMatch = example.match(/^When\s+(.{10,100}?)(?:,\s+Claude|,\s+the\s|,\s+CSS|,\s+pseudo)/i);
+  if (whenMatch) return whenMatch[1].trim().toLowerCase();
+
+  // Match up to the first comma NOT inside parentheses
+  // (?:[^,(]|\([^)]*\)) matches a non-comma/non-paren char OR a complete (...) group
+  const commaMatch = example.match(/^((?:[^,(]|\([^)]*\)){10,100}?)(?:,)/);
+  if (commaMatch) return commaMatch[1].trim().toLowerCase();
+
+  return null;
+}
+
+/** Extract technical/domain-specific trigger terms, filtering generic verbs */
+export function extractTriggerTerms(friction: FrictionCategory): string[] {
+  const genericVerbs = new Set([
+    'when', 'why', 'how', 'what', 'where', 'which',
+    'fixing', 'fixed', 'fix', 'implementing', 'implemented', 'implement',
+    'using', 'used', 'use', 'making', 'made', 'make',
+    'working', 'worked', 'work', 'adding', 'added', 'add',
+    'getting', 'got', 'get', 'trying', 'tried', 'try',
+    'running', 'ran', 'run', 'setting', 'set', 'first',
+    'still', 'then', 'just', 'only', 'also', 'many',
+    'multiple', 'several', 'various', 'caused', 'causing',
+    'required', 'requiring', 'needed', 'left', 'spent',
+    'claude', 'claudes', 'session', 'sessions', 'approach',
+    'issue', 'issues', 'problem', 'problems', 'initially',
+  ]);
+  const allText = [...friction.examples, friction.description].join(' ');
+  return allText
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !genericVerbs.has(w) && !stopWordsSet.has(w));
+}
+
+const stopWordsSet = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+  'not', 'no', 'without', 'before', 'after', 'about', 'that', 'this', 'it']);
+
+/** Build structured verify-first steps, with optional pattern prompt as starting context */
+export function buildSkillSteps(friction: FrictionCategory, pattern: PatternCard | undefined): string {
+  const steps: string[] = [];
+
+  steps.push(`**Diagnose**: Read the relevant files and map the existing patterns related to ${friction.title.toLowerCase()}. Identify boundaries, ownership, and current behavior before changing anything.`);
+  steps.push('**Identify constraints**: List what must NOT change, which components or modules are affected, and document your assumptions. Get confirmation before proceeding.');
+  steps.push('**Propose approach**: Describe your planned fix and explain why it avoids the known failure patterns listed in "What Goes Wrong" below. Wait for approval.');
+  steps.push('**Implement**: Apply the most minimal, narrowly-scoped change possible. Prefer the smallest edit that solves the problem.');
+  steps.push('**Verify**: Confirm the fix works AND doesn\'t regress related components. Check against each example in "What Goes Wrong". Run relevant tests.');
+
+  let output = steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+  if (pattern) {
+    output += `\n\n### Suggested Starting Prompt\n\n> ${pattern.prompt}`;
+  }
+
+  return output;
+}
+
+/** Parse a CLAUDE.md rule into bullet points, with fallback rules from friction context */
+export function buildSkillRules(rule: ClaudeMdItem | undefined, friction: FrictionCategory): string {
+  const bullets: string[] = [];
+
+  if (rule) {
+    bullets.push(...parseRuleIntoBullets(rule.code));
+  }
+
+  // Add fallback domain-specific rules when no CLAUDE.md rule matched
+  if (bullets.length === 0) {
+    const domainWords = significantWords(friction.title).slice(0, 3);
+    const domainHint = domainWords.length > 0 ? domainWords.join(', ') : 'existing';
+    bullets.push(`Always inspect and reference existing ${domainHint} patterns before proposing a solution`);
+    bullets.push('Do NOT apply broad or global changes — use the narrowest possible scope');
+  }
+
+  // Only append universal guardrails if not already covered by parsed rules
+  const existingText = bullets.join(' ').toLowerCase();
+  if (!existingText.includes('regress') && !existingText.includes('don\'t break') && !existingText.includes('doesn\'t affect')) {
+    bullets.push('After implementing, verify the fix doesn\'t regress related components or sibling functionality');
+  }
+  if (!existingText.includes('confirm') && !existingText.includes('approval') && !existingText.includes('before applying')) {
+    bullets.push('Before applying changes, list affected components and get confirmation');
+  }
+
+  return bullets.map(b => `- ${b}`).join('\n');
+}
+
+/** Split a rule string into individual bullet-point items */
+export function parseRuleIntoBullets(code: string): string[] {
+  // Try numbered items: "1) item, 2) item" or "1. item"
+  const numberedItems = code.match(/\d+[).]\s*[^,;)]+/g);
+  if (numberedItems && numberedItems.length >= 2) {
+    return numberedItems.map(item =>
+      item.replace(/^\d+[).]\s*/, '').replace(/,\s*$/, '').trim()
+    ).filter(s => s.length > 5);
+  }
+
+  // Try splitting by sentences
+  const sentences = code.split(/\.\s+/).filter(s => s.trim().length > 10);
+  if (sentences.length >= 2) {
+    return sentences.map(s => s.trim().replace(/\.$/, ''));
+  }
+
+  // Single rule as-is
+  return [code.trim()];
+}
+
+/** Format friction examples with bolded technical terms */
+export function buildSkillExamples(examples: string[]): string {
+  if (examples.length === 0) return '';
+
+  let md = '## What Goes Wrong\n\n';
+  md += 'Review these failure patterns before implementing. Your fix must not repeat them:\n\n';
+  for (const example of examples) {
+    md += `- ${boldTechTerms(example)}\n`;
+  }
+  md += '\n';
+  return md;
+}
+
+/** Bold key technical terms in example text for scanability */
+export function boldTechTerms(text: string): string {
+  return text
+    // Bold CSS pseudo-selectors like :has(), ::before
+    .replace(/(::?[a-z-]+\([^)]*\))/g, '**$1**')
+    // Bold dimensions like 0×0
+    .replace(/\b(\d+[×x]\d+)\b/g, '**$1**')
+    // Bold multi-word uppercase sequences as phrases (e.g., "LEFT JOIN", "INNER JOIN", "Shadow DOM")
+    .replace(/(?<=[\s,(])([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)+)(?=[\s,.):])/g, '**$1**')
+    // Bold remaining standalone acronyms (2+ uppercase) not already inside **
+    .replace(/(?<!\*\*)(?<=[\s,(])([A-Z]{2,})(?=[\s,.):])/g, '**$1**');
+}
+
+/** Build a verification checklist from friction examples */
+export function buildVerificationChecklist(friction: FrictionCategory): string {
+  const checks: string[] = [];
+
+  checks.push('- [ ] Fix addresses the specific issue the user reported');
+  checks.push('- [ ] Change follows existing codebase patterns found during diagnosis');
+  checks.push('- [ ] Change is narrowly scoped — minimal blast radius');
+  checks.push('- [ ] Related/sibling components verified — no regressions');
+
+  for (const example of friction.examples.slice(0, 3)) {
+    const short = example.length > 100
+      ? example.slice(0, 100).replace(/\s+\S*$/, '') + '...'
+      : example;
+    checks.push(`- [ ] Verified against: "${short}"`);
+  }
+
+  checks.push('- [ ] Approach was proposed and confirmed before implementation');
+
+  return checks.join('\n');
+}
+
+/** Auto-generate "When to Use" triggers from friction title + examples */
+export function buildWhenToUse(friction: FrictionCategory): string {
+  const triggers: string[] = [];
+
+  // Primary trigger from title
+  triggers.push(`When a task involves ${friction.title.toLowerCase()}.`);
+
+  // Scenario-based triggers from examples
+  for (const example of friction.examples.slice(0, 3)) {
+    const phrase = extractScenarioPhrase(example);
+    if (phrase) {
+      triggers.push(`When ${phrase}.`);
+    }
+  }
+
+  // Fallback: description-based trigger
+  if (triggers.length === 1) {
+    const descWords = significantWords(friction.description).slice(0, 4);
+    if (descWords.length > 0) {
+      triggers.push(`When previous attempts involved ${descWords.join(', ')} issues.`);
+    }
+  }
+
+  return triggers.map(t => `- ${t}`).join('\n');
+}
+
 /** Find the best matching item by checking for shared significant words */
-function findBestMatch<T>(title: string, candidates: { text: string; item: T }[]): T | undefined {
+export function findBestMatch<T>(title: string, candidates: { text: string; item: T }[]): T | undefined {
   const titleWords = significantWords(title);
   let bestMatch: T | undefined;
   let bestScore = 0;
@@ -209,7 +434,7 @@ function findBestMatch<T>(title: string, candidates: { text: string; item: T }[]
 }
 
 /** Extract significant words (skip common stop words) */
-function significantWords(text: string): string[] {
+export function significantWords(text: string): string[] {
   const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
     'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
     'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
@@ -217,7 +442,7 @@ function significantWords(text: string): string[] {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
 }
 
-function buildReadme(skills: SkillFile[]): string {
+export function buildReadme(skills: SkillFile[]): string {
   const skillRows = skills.map(s => {
     const name = s.filename.replace('.SKILL.md', '');
     return `| \`.claude/skills/${s.filename}\` | \`/${name}\` skill | Copy to your project's \`.claude/skills/\` |`;
@@ -225,9 +450,19 @@ function buildReadme(skills: SkillFile[]): string {
 
   const skillTests = skills.map(s => {
     const name = s.filename.replace('.SKILL.md', '');
-    // Extract description from frontmatter
-    const descMatch = s.content.match(/description:\s*(.+)/);
-    const desc = descMatch ? descMatch[1].trim() : name;
+    // Extract first line of description from frontmatter (handles both inline and multi-line |)
+    const lines = s.content.split('\n');
+    const descIdx = lines.findIndex(l => l.startsWith('description:'));
+    let desc = name;
+    if (descIdx !== -1) {
+      const descLine = lines[descIdx];
+      if (descLine.includes('|')) {
+        // Multi-line YAML: first content line is next non-empty indented line
+        desc = (lines[descIdx + 1] || '').trim();
+      } else {
+        desc = descLine.replace('description:', '').trim();
+      }
+    }
     return `- \`/${name}\` — ${desc}`;
   }).join('\n');
 

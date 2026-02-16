@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Full Test Report</title></head>
+<body>
+  <h1>Widget Configuration Insights</h1>
+  <div class="subtitle">Analysis of 14 sessions over 30 days</div>
+
+  <div class="stat">
+    <span class="stat-value">127</span>
+    <span class="stat-label">Messages</span>
+  </div>
+  <div class="stat">
+    <span class="stat-value">14</span>
+    <span class="stat-label">Sessions</span>
+  </div>
+
+  <div class="glance-section">
+    <strong>Primary Focus:</strong> Component library development and testing
+  </div>
+
+  <div class="project-area">
+    <span class="area-name">Widget Library</span>
+    <span class="area-count">42 messages</span>
+    <span class="area-desc">Core widget components and configuration</span>
+  </div>
+  <div class="project-area">
+    <span class="area-name">Dashboard App</span>
+    <span class="area-count">31 messages</span>
+    <span class="area-desc">Dashboard layout and data visualization</span>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-title">Activity by Category</div>
+    <div class="bar-row">
+      <span class="bar-label">Bug Fixes</span>
+      <span class="bar-value">8</span>
+      <div class="bar-fill" style="width: 73.5%"></div>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Features</span>
+      <span class="bar-value">5</span>
+      <div class="bar-fill" style="width: 45.2%"></div>
+    </div>
+  </div>
+
+  <div class="narrative">
+    <p>Your sessions focused primarily on widget configuration and styling issues.</p>
+    <p>The majority of friction came from CSS scoping in shadow DOM components.</p>
+    <div class="key-insight">Establishing clear CSS scoping rules would eliminate 40% of repeated issues.</div>
+  </div>
+
+  <div class="big-win">
+    <div class="big-win-title">Rapid Component Scaffolding</div>
+    <div class="big-win-desc">Created 12 new components in a single session with consistent patterns.</div>
+  </div>
+  <div class="big-win">
+    <div class="big-win-title">Test Coverage Boost</div>
+    <div class="big-win-desc">Increased unit test coverage from 45% to 82% across the widget library.</div>
+  </div>
+
+  <div class="friction-category">
+    <div class="friction-title">Widget Configuration Errors</div>
+    <div class="friction-desc">Claude repeatedly misconfigured widget props, ignoring the existing pattern of using default slot content.</div>
+    <ul class="friction-examples">
+      <li>When configuring dropdown widgets, Claude used inline styles instead of CSS custom properties</li>
+      <li>When building modal (dialog) components, the focus trap was omitted causing accessibility failures</li>
+    </ul>
+  </div>
+  <div class="friction-category">
+    <div class="friction-title">CSS Scoping Mistakes</div>
+    <div class="friction-desc">Styles leaked across shadow DOM boundaries because global selectors were used instead of :host scoping.</div>
+    <ul class="friction-examples">
+      <li>When styling :host() pseudo-selectors, Claude applied global resets that broke parent layout</li>
+      <li>When updating theme variables, CSS custom properties were duplicated across three components</li>
+    </ul>
+  </div>
+
+  <div class="claude-md-item">
+    <div class="cmd-code">Always use CSS custom properties for theming; never use inline styles in shadow DOM components</div>
+    <div class="cmd-why">Inline styles cannot be overridden by consumers and break the theming system</div>
+  </div>
+  <div class="claude-md-item">
+    <div class="cmd-code">Before debugging, reproduce the issue in isolation and check the browser console for errors</div>
+    <div class="cmd-why">Jumping to code changes without reproducing wastes time on wrong assumptions</div>
+  </div>
+
+  <div class="feature-card">
+    <div class="feature-title">Pre-commit Hooks</div>
+    <div class="feature-oneliner">Catch lint and type errors before they reach review</div>
+    <div class="feature-why">Reduces back-and-forth on style issues</div>
+    <div class="example-code">{ "hooks": { "pre-commit": "npm run lint && npm run typecheck" } }</div>
+  </div>
+
+  <div class="pattern-card">
+    <div class="pattern-title">Scoped CSS Review</div>
+    <div class="pattern-summary">Review all CSS changes in shadow DOM components before committing</div>
+    <div class="pattern-detail">This pattern catches style leakage early by requiring a final CSS audit step.</div>
+    <div class="copyable-prompt">Before making CSS changes to any shadow DOM component, list all existing :host and custom property patterns first.</div>
+  </div>
+
+  <div class="horizon-card">
+    <div class="horizon-title">Automated Visual Regression</div>
+    <div class="horizon-possible">Catch visual regressions before they reach QA</div>
+    <div class="horizon-tip">Start with critical path components</div>
+    <div class="pattern-prompt"><code>Set up visual regression tests for the top 5 most-changed components</code></div>
+  </div>
+
+  <div class="fun-headline">Widget Wizard</div>
+  <div class="fun-detail">You created more widgets this month than a factory assembly line.</div>
+</body>
+</html>

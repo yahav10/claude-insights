@@ -1,37 +1,49 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import type { AnalyzerOutput, TodoItem } from './types.js';
 
+function safeWrite(filePath: string, content: string): void {
+  try {
+    writeFileSync(filePath, content);
+  } catch (err) {
+    throw new Error(`Failed to write ${filePath}: ${(err as Error).message}`, { cause: err });
+  }
+}
+
 export function generate(output: AnalyzerOutput, outputDir: string): string[] {
-  mkdirSync(join(outputDir, '.claude', 'skills'), { recursive: true });
+  try {
+    mkdirSync(join(outputDir, '.claude', 'skills'), { recursive: true });
+  } catch (err) {
+    throw new Error(`Cannot create output directory: ${outputDir}. ${(err as Error).message}`, { cause: err });
+  }
 
   const files: string[] = [];
 
   // 1. insights-todo.md
   const todoPath = join(outputDir, 'insights-todo.md');
-  writeFileSync(todoPath, formatTodoTable(output.todos));
+  safeWrite(todoPath, formatTodoTable(output.todos));
   files.push(todoPath);
 
   // 2. CLAUDE.md-additions.md
   const claudeMdPath = join(outputDir, 'CLAUDE.md-additions.md');
-  writeFileSync(claudeMdPath, output.claudeMdAdditions);
+  safeWrite(claudeMdPath, output.claudeMdAdditions);
   files.push(claudeMdPath);
 
   // 3. settings-insights.json
   const settingsPath = join(outputDir, '.claude', 'settings-insights.json');
-  writeFileSync(settingsPath, JSON.stringify(output.settingsJson, null, 2));
+  safeWrite(settingsPath, JSON.stringify(output.settingsJson, null, 2));
   files.push(settingsPath);
 
   // 4. Skills
   for (const skill of output.skills) {
     const skillPath = join(outputDir, '.claude', 'skills', skill.filename);
-    writeFileSync(skillPath, skill.content);
+    safeWrite(skillPath, skill.content);
     files.push(skillPath);
   }
 
   // 5. README
   const readmePath = join(outputDir, 'insights-README.md');
-  writeFileSync(readmePath, output.readmeContent);
+  safeWrite(readmePath, output.readmeContent);
   files.push(readmePath);
 
   return files;
