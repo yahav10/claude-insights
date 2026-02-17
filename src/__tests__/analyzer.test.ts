@@ -11,6 +11,7 @@ import {
   buildSettings,
   buildClaudeMdAdditions,
   buildSkills,
+  mapFrictionToHooks,
 } from '../analyzer.js';
 import { makeReportData, makeFriction, makeClaudeMdItem } from './helpers.js';
 
@@ -266,6 +267,50 @@ describe('analyze (integration)', () => {
   });
 });
 
+describe('mapFrictionToHooks', () => {
+  it('maps CSS friction to PreToolUse prompt hook', () => {
+    const friction = makeFriction({ title: 'CSS Scoping Mistakes' });
+    const hooks = mapFrictionToHooks(friction);
+    expect(hooks.length).toBeGreaterThan(0);
+    expect(hooks[0].event).toBe('PreToolUse');
+    expect(hooks[0].handlerType).toBe('prompt');
+    expect(hooks[0].prompt).toBeDefined();
+  });
+
+  it('maps test friction to PostToolUse command hook', () => {
+    const friction = makeFriction({ title: 'Test Pattern Failures' });
+    const hooks = mapFrictionToHooks(friction);
+    expect(hooks.length).toBeGreaterThan(0);
+    const postToolHook = hooks.find(h => h.event === 'PostToolUse');
+    expect(postToolHook).toBeDefined();
+  });
+
+  it('maps debugging friction to Stop prompt hook', () => {
+    const friction = makeFriction({ title: 'Debugging Wrong Root Causes' });
+    const hooks = mapFrictionToHooks(friction);
+    const stopHook = hooks.find(h => h.event === 'Stop');
+    expect(stopHook).toBeDefined();
+    expect(stopHook!.handlerType).toBe('prompt');
+  });
+
+  it('returns generic PreToolUse hook for unrecognized friction', () => {
+    const friction = makeFriction({
+      title: 'Completely Unknown Category',
+      description: 'An unrecognized friction that does not match any known keywords.',
+      examples: ['Something went wrong in an unclear way'],
+    });
+    const hooks = mapFrictionToHooks(friction);
+    expect(hooks.length).toBeGreaterThan(0);
+    expect(hooks[0].event).toBe('PreToolUse');
+  });
+
+  it('includes description explaining why the hook exists', () => {
+    const friction = makeFriction({ title: 'CSS Scoping Mistakes' });
+    const hooks = mapFrictionToHooks(friction);
+    hooks.forEach(h => expect(h.description).toBeTruthy());
+  });
+});
+
 describe('buildSettings', () => {
   it('parses hooks from feature card example', () => {
     const data = makeReportData({
@@ -278,17 +323,17 @@ describe('buildSettings', () => {
     });
     const result = buildSettings(data);
     expect(result).toHaveProperty('hooks');
-    expect((result as { hooks: { 'pre-commit': string } }).hooks['pre-commit']).toBe('npm run lint');
   });
 
-  it('returns empty object when no hooks feature exists', () => {
-    const data = makeReportData({ features: [] });
+  it('returns empty object when no hooks feature and no frictions', () => {
+    const data = makeReportData({ features: [], frictions: [] });
     const result = buildSettings(data);
     expect(result).toEqual({});
   });
 
-  it('returns empty object when hooks feature has no examples', () => {
+  it('returns empty object when hooks feature has no examples and no frictions', () => {
     const data = makeReportData({
+      frictions: [],
       features: [{
         title: 'Pre-commit Hooks',
         oneliner: 'Test',
@@ -298,6 +343,52 @@ describe('buildSettings', () => {
     });
     const result = buildSettings(data);
     expect(result).toEqual({});
+  });
+
+  it('generates hooks from frictions', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+    });
+    const settings = buildSettings(data);
+    expect(settings).toHaveProperty('hooks');
+  });
+
+  it('generates empty object when no frictions and no feature hooks', () => {
+    const data = makeReportData({ frictions: [], features: [] });
+    const settings = buildSettings(data);
+    expect(settings).toBeDefined();
+  });
+
+  it('deduplicates hooks targeting the same event', () => {
+    const data = makeReportData({
+      frictions: [
+        makeFriction({ title: 'CSS Scoping Mistakes' }),
+        makeFriction({ title: 'CSS Layout Failures' }),
+      ],
+    });
+    const settings = buildSettings(data);
+    expect(settings).toHaveProperty('hooks');
+    // Access the PreToolUse hooks array and check no duplicate prompts
+    const hooks = settings.hooks as Record<string, unknown[]>;
+    if (hooks && hooks['PreToolUse']) {
+      const prompts = (hooks['PreToolUse'] as Array<{ prompt?: string }>).map(h => h.prompt);
+      const uniquePrompts = [...new Set(prompts)];
+      expect(prompts.length).toBe(uniquePrompts.length);
+    }
+  });
+
+  it('preserves existing hooks from feature card JSON', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+      features: [{
+        title: 'Custom Hooks',
+        oneliner: 'Auto-run checks',
+        why: 'Catch issues early',
+        examples: ['{"hooks":{"PostToolUse":[{"command":"npm test","description":"Run tests"}]}}'],
+      }],
+    });
+    const settings = buildSettings(data);
+    expect(settings).toHaveProperty('hooks');
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard } from './types.js';
+import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard, HookConfig, HookEvent } from './types.js';
 
 export function analyze(data: ReportData): AnalyzerOutput {
   const skills = buildSkills(data);
@@ -128,27 +128,164 @@ export function buildClaudeMdAdditions(data: ReportData): string {
   return md;
 }
 
-export function buildSettings(data: ReportData): Record<string, unknown> {
-  // Extract hook configurations from feature examples
-  const hooksFeature = data.features.find(f => f.title.toLowerCase().includes('hook'));
+interface FrictionHookMapping {
+  keywords: string[];
+  hooks: Omit<HookConfig, 'description'>[];
+}
 
-  if (hooksFeature && hooksFeature.examples.length > 0) {
-    // Try to extract JSON from the example code
-    const example = hooksFeature.examples[0];
-    const jsonMatch = example.match(/\{[\s\S]*"hooks"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        // Clean up the example — remove JS comments
-        const cleaned = jsonMatch[0].replace(/\/\/.*$/gm, '').trim();
-        return JSON.parse(cleaned);
-      } catch {
-        // Fallback to a sensible default based on the report content
+const FRICTION_HOOK_MAPPINGS: FrictionHookMapping[] = [
+  {
+    keywords: ['css', 'styling', 'scoped', 'shadow dom', 'layout', 'visual'],
+    hooks: [{
+      event: 'PreToolUse',
+      handlerType: 'prompt',
+      prompt: 'Before editing CSS or style files: 1) List all existing selectors in the target file, 2) Identify which components could be affected, 3) Note any Shadow DOM or scoping boundaries',
+    }],
+  },
+  {
+    keywords: ['test', 'mock', 'playwright', 'vitest', 'unit test', 'e2e'],
+    hooks: [{
+      event: 'PostToolUse',
+      handlerType: 'command',
+      command: 'npm test 2>&1 | tail -20',
+    }],
+  },
+  {
+    keywords: ['debug', 'root cause', 'reproduce', 'diagnostic', 'production'],
+    hooks: [{
+      event: 'Stop',
+      handlerType: 'prompt',
+      prompt: 'Before completing: verify the root cause was confirmed with evidence, not just hypothesized. Check that diagnostic steps were followed.',
+    }],
+  },
+  {
+    keywords: ['import', 'build', 'compile', 'bundle', 'dependency'],
+    hooks: [{
+      event: 'PreToolUse',
+      handlerType: 'prompt',
+      prompt: 'Before modifying imports or build configuration: verify the change against existing import conventions in sibling files.',
+    }],
+  },
+  {
+    keywords: ['scope', 'boundary', 'frontend', 'backend'],
+    hooks: [{
+      event: 'PreToolUse',
+      handlerType: 'prompt',
+      prompt: 'Before making changes: confirm the scope boundaries. Do not modify files outside the stated scope without explicit permission.',
+    }],
+  },
+];
+
+const DEFAULT_HOOK: Omit<HookConfig, 'description'> = {
+  event: 'PreToolUse',
+  handlerType: 'prompt',
+  prompt: 'Before proposing changes: verify your approach against existing codebase patterns. Read similar implementations first.',
+};
+
+export function mapFrictionToHooks(friction: FrictionCategory): HookConfig[] {
+  const titleLower = friction.title.toLowerCase();
+  const descLower = friction.description.toLowerCase();
+  const combined = `${titleLower} ${descLower}`;
+
+  const matchedHooks: HookConfig[] = [];
+
+  for (const mapping of FRICTION_HOOK_MAPPINGS) {
+    if (mapping.keywords.some(kw => combined.includes(kw))) {
+      for (const hook of mapping.hooks) {
+        matchedHooks.push({
+          ...hook,
+          description: `Addresses friction: "${friction.title}"`,
+        });
       }
     }
   }
 
-  // No hooks feature found in report — return empty config
-  return {};
+  // Fallback: if no specific mapping matched, use the default
+  if (matchedHooks.length === 0) {
+    matchedHooks.push({
+      ...DEFAULT_HOOK,
+      description: `Addresses friction: "${friction.title}"`,
+    });
+  }
+
+  return matchedHooks;
+}
+
+export function buildSettings(data: ReportData): Record<string, unknown> {
+  // 1. Generate hooks from friction categories
+  const allHooks: HookConfig[] = [];
+  for (const friction of data.frictions) {
+    allHooks.push(...mapFrictionToHooks(friction));
+  }
+
+  // 2. Try to extract hooks from feature card JSON (existing logic)
+  let featureHooksObj: Record<string, unknown[]> = {};
+  const hooksFeature = data.features.find(f => f.title.toLowerCase().includes('hook'));
+  if (hooksFeature && hooksFeature.examples.length > 0) {
+    const example = hooksFeature.examples[0];
+    const jsonMatch = example.match(/\{[\s\S]*"hooks"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const cleaned = jsonMatch[0].replace(/\/\/.*$/gm, '').trim();
+        const parsed = JSON.parse(cleaned);
+        if (parsed.hooks && typeof parsed.hooks === 'object') {
+          featureHooksObj = parsed.hooks as Record<string, unknown[]>;
+        }
+      } catch {
+        // Invalid JSON — skip feature hooks
+      }
+    }
+  }
+
+  // 3. If no friction hooks and no feature hooks, return empty
+  if (allHooks.length === 0 && Object.keys(featureHooksObj).length === 0) {
+    return {};
+  }
+
+  // 4. Build the hooks object from friction-derived hooks, deduplicating by event+content
+  const hooksMap: Record<string, Array<Record<string, string>>> = {};
+  const seen = new Set<string>();
+
+  for (const hook of allHooks) {
+    const contentKey = hook.command ?? hook.prompt ?? '';
+    const dedupKey = `${hook.event}:${contentKey}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    const eventKey: HookEvent = hook.event;
+    if (!hooksMap[eventKey]) {
+      hooksMap[eventKey] = [];
+    }
+
+    const entry: Record<string, string> = {
+      type: hook.handlerType,
+      description: hook.description,
+    };
+    if (hook.command) entry.command = hook.command;
+    if (hook.prompt) entry.prompt = hook.prompt;
+
+    hooksMap[eventKey].push(entry);
+  }
+
+  // 5. Merge feature card hooks (they take precedence / are additive)
+  for (const [eventKey, entries] of Object.entries(featureHooksObj)) {
+    if (!hooksMap[eventKey]) {
+      hooksMap[eventKey] = [];
+    }
+    if (Array.isArray(entries)) {
+      for (const entry of entries) {
+        const entryObj = entry as Record<string, string>;
+        const contentKey = entryObj.command ?? entryObj.prompt ?? '';
+        const dedupKey = `${eventKey}:${contentKey}`;
+        if (!seen.has(dedupKey)) {
+          seen.add(dedupKey);
+          hooksMap[eventKey].push(entryObj);
+        }
+      }
+    }
+  }
+
+  return { hooks: hooksMap };
 }
 
 export function buildSkills(data: ReportData): SkillFile[] {

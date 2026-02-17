@@ -105,6 +105,18 @@ export interface SkillFile {
   content: string;
 }
 
+export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'Notification' | 'Stop' | 'SubagentStop';
+
+export type HookHandlerType = 'command' | 'prompt';
+
+export interface HookConfig {
+  event: HookEvent;
+  handlerType: HookHandlerType;
+  command?: string;
+  prompt?: string;
+  description: string;
+}
+
 export interface AnalyzerOutput {
   todos: TodoItem[];
   claudeMdAdditions: string;
