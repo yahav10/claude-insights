@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { watchReport } from '../watcher.js';
-import type { PipelineResult } from '../types.js';
+import type { PipelineResult, PipelineOptions } from '../types.js';
 
 function fixturePath(name: string): string {
   return fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -36,7 +36,7 @@ describe('watchReport', () => {
     const filePath = join(tempDir, 'report.html');
     copyFileSync(fixturePath('minimal-report.html'), filePath);
 
-    const pipelineFn = vi.fn<(file: string, opts: Record<string, unknown>) => PipelineResult>(
+    const pipelineFn = vi.fn<(file: string, opts: PipelineOptions) => PipelineResult>(
       () => ({ data: {} as PipelineResult['data'], output: {} as PipelineResult['output'], files: [] }),
     );
 
@@ -63,7 +63,7 @@ describe('watchReport', () => {
     const filePath = join(tempDir, 'report.html');
     copyFileSync(fixturePath('minimal-report.html'), filePath);
 
-    const pipelineFn = vi.fn<(file: string, opts: Record<string, unknown>) => PipelineResult>(
+    const pipelineFn = vi.fn<(file: string, opts: PipelineOptions) => PipelineResult>(
       () => ({ data: {} as PipelineResult['data'], output: {} as PipelineResult['output'], files: [] }),
     );
 
@@ -95,7 +95,7 @@ describe('watchReport', () => {
 
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const pipelineFn = vi.fn<(file: string, opts: Record<string, unknown>) => PipelineResult>(() => {
+    const pipelineFn = vi.fn<(file: string, opts: PipelineOptions) => PipelineResult>(() => {
       throw new Error('pipeline failed');
     });
 
@@ -126,7 +126,7 @@ describe('watchReport', () => {
     const filePath = join(tempDir, 'report.html');
     copyFileSync(fixturePath('minimal-report.html'), filePath);
 
-    const pipelineFn = vi.fn<(file: string, opts: Record<string, unknown>) => PipelineResult>(
+    const pipelineFn = vi.fn<(file: string, opts: PipelineOptions) => PipelineResult>(
       () => ({ data: {} as PipelineResult['data'], output: {} as PipelineResult['output'], files: [] }),
     );
 
