@@ -1,11 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseReport } from '../parser.js';
 import { analyze } from '../analyzer.js';
 import { generate } from '../generator.js';
+
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function fixturePath(name: string): string {
   return fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -115,5 +117,24 @@ describe('integration: full pipeline', () => {
     const files = generate(output, tempDir);
     // todo + claude-md + settings + readme + 1 skill = 5
     expect(files).toHaveLength(5);
+  });
+});
+
+describe('skills/analyze-insights/SKILL.md', () => {
+  it('exists and has valid frontmatter', () => {
+    const skillPath = join(projectRoot, 'skills', 'analyze-insights', 'SKILL.md');
+    expect(existsSync(skillPath)).toBe(true);
+    const content = readFileSync(skillPath, 'utf-8');
+    expect(content).toContain('name: analyze-insights');
+    expect(content).toContain('allowed-tools:');
+    expect(content).toContain('context: fork');
+  });
+
+  it('contains required sections', () => {
+    const skillPath = join(projectRoot, 'skills', 'analyze-insights', 'SKILL.md');
+    const content = readFileSync(skillPath, 'utf-8');
+    expect(content).toContain('## When to Use');
+    expect(content).toContain('## Steps');
+    expect(content).toContain('## Rules');
   });
 });
