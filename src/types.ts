@@ -184,3 +184,13 @@ export interface PipelineResult {
   output: AnalyzerOutput;
   files: string[];
 }
+
+export interface WatchOptions {
+  outputDir: string;
+  apply?: boolean;
+  facets?: string;
+}
+
+export interface WatchHandle {
+  stop: () => void;
+}

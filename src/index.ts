@@ -8,6 +8,7 @@ import { generate } from './generator.js';
 import { applyToProject, formatApplySummary } from './applier.js';
 import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
 import { parseFacets, enrichAnalysis } from './facet-parser.js';
+import { watchReport } from './watcher.js';
 import type { ReportData } from './types.js';
 
 const program = new Command();
@@ -165,6 +166,37 @@ program
     if (!entry2) { console.error(`No history found for ${date2}`); process.exit(1); }
     const trend = buildTrendReport(entry2, entry1);
     console.log(formatTrendReport(trend));
+  });
+
+program
+  .command('watch')
+  .description('Watch a report file and re-run the pipeline on changes')
+  .argument('<file>', 'Path to the report.html file')
+  .requiredOption('-o, --output-dir <path>', 'Output directory for generated files')
+  .option('--apply', 'Merge output directly into the project on each change')
+  .option('--facets [dir]', 'Enrich analysis with facet data')
+  .action((file: string, opts: { outputDir: string; apply?: boolean; facets?: string | boolean }) => {
+    const filePath = resolve(file);
+    if (!existsSync(filePath)) {
+      console.error(`Error: File not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    const outputDir = resolve(opts.outputDir);
+    const facets = typeof opts.facets === 'string' ? opts.facets : undefined;
+
+    const handle = watchReport(filePath, {
+      outputDir,
+      apply: opts.apply,
+      facets,
+    });
+
+    // Keep process alive until Ctrl+C
+    process.on('SIGINT', () => {
+      console.log('\nStopping watcher...');
+      handle.stop();
+      process.exit(0);
+    });
   });
 
 program.parse();
