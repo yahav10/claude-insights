@@ -19,6 +19,9 @@ npm run build
 ## Usage
 
 ```bash
+# Auto-detect report and apply (simplest usage)
+claude-insights analyze --apply
+
 # Standard mode -- generate output files to a directory
 claude-insights analyze path/to/report.html -o ./my-project
 
@@ -27,6 +30,12 @@ claude-insights analyze path/to/report.html --apply
 
 # With session facet data enrichment
 claude-insights analyze path/to/report.html --apply --facets
+
+# Wait for report to appear (while /insight is running in Claude Code)
+claude-insights analyze --wait --apply
+
+# Wait with custom timeout (600 seconds)
+claude-insights analyze --wait 600 -o ./my-project
 
 # Watch mode -- re-run on report changes
 claude-insights watch path/to/report.html -o ./my-project
@@ -41,26 +50,38 @@ claude-insights diff 2026-01-15 2026-02-15
 claude-insights team report1.html report2.html -o ./team-output
 ```
 
-### Finding Your Report
+### Auto-Detect
 
-The Claude Code `/insight` report is typically at:
+When no file argument is given, the CLI automatically looks for the report at `~/.claude/usage-data/report.html`. If found, it runs the analysis. If not, it prints instructions for generating one with `/insight`.
+
+```bash
+# These are equivalent:
+claude-insights analyze
+claude-insights analyze ~/.claude/usage-data/report.html
 ```
-~/.claude/usage-data/report.html
+
+### Wait Mode
+
+Use `--wait` to have the CLI watch for the report to appear. This is useful when you run `/insight` in Claude Code and want the analysis to start automatically once it finishes:
+
+```bash
+claude-insights analyze --wait --apply
 ```
 
 ### Example
 
 ```bash
-claude-insights analyze ~/.claude/usage-data/report.html --apply -o ~/Documents/my-project
+claude-insights analyze --apply -o ~/Documents/my-project
 ```
 
 ## Commands Reference
 
 | Command | Description |
 |---------|-------------|
-| `analyze <file>` | Parse report and generate output files |
-| `analyze <file> --apply` | Parse and auto-merge into project (dedup-aware) |
-| `analyze <file> --facets` | Enrich analysis with session facet data |
+| `analyze [file]` | Parse report and generate output files (auto-detects default path) |
+| `analyze [file] --apply` | Parse and auto-merge into project (dedup-aware) |
+| `analyze [file] --facets` | Enrich analysis with session facet data |
+| `analyze --wait` | Wait for report to appear, then analyze (default 300s timeout) |
 | `watch <file> -o <dir>` | Watch report file and re-run on changes |
 | `history` | List past analysis runs |
 | `diff <date1> <date2>` | Compare two analysis runs by date |
@@ -73,6 +94,7 @@ claude-insights analyze ~/.claude/usage-data/report.html --apply -o ~/Documents/
 | `-o, --output-dir <path>` | analyze, watch | Output directory for generated files |
 | `--apply` | analyze, watch | Merge directly into project (dedup-aware) |
 | `--facets [dir]` | analyze, watch | Include session facet data from `~/.claude/usage-data/facets/` or a custom directory |
+| `--wait [seconds]` | analyze | Wait for report to appear before analyzing (default 300s) |
 
 ## Output Files
 

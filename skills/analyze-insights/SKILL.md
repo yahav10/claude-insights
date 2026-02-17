@@ -3,7 +3,7 @@ name: analyze-insights
 description: Analyze Claude Code /insight report and generate actionable files
 allowed-tools: ["Bash", "Read", "Write"]
 context: fork
-argument-hint: "<path-to-report.html>"
+argument-hint: "[path-to-report.html]"
 ---
 
 ## When to Use This Skill
@@ -18,8 +18,9 @@ argument-hint: "<path-to-report.html>"
    - `~/.claude/usage-data/report.html`
    - A saved file from the browser after running `/insight`
 
-2. **Run the analysis**: Execute claude-insights against the report:
+2. **Run the analysis**: Execute claude-insights (auto-detects the report, or pass a path):
    ```bash
+   npx claude-insights analyze -o ./insights
    npx claude-insights analyze <report-file> -o ./insights
    ```
 
@@ -32,7 +33,7 @@ argument-hint: "<path-to-report.html>"
 
 4. **Apply directly** (alternative): Use `--apply` to merge directly into your project:
    ```bash
-   npx claude-insights analyze <report-file> --apply
+   npx claude-insights analyze --apply
    ```
 
 5. **Verify**: Check that the generated rules and skills make sense for your project.
@@ -46,14 +47,17 @@ argument-hint: "<path-to-report.html>"
 ## Examples
 
 ```bash
-# Standard analysis with output directory
+# Auto-detect report and apply (simplest)
+npx claude-insights analyze --apply
+
+# Wait for report to appear, then apply
+npx claude-insights analyze --wait --apply
+
+# Standard analysis with explicit file
 npx claude-insights analyze ~/report.html -o ./my-project
 
-# Auto-apply to current project
-npx claude-insights analyze ~/report.html --apply
-
 # With facet data enrichment
-npx claude-insights analyze ~/report.html --apply --facets
+npx claude-insights analyze --apply --facets
 
 # Watch for report changes
 npx claude-insights watch ~/report.html -o ./my-project
