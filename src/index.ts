@@ -8,6 +8,7 @@ import { generate } from './generator.js';
 import { applyToProject, formatApplySummary } from './applier.js';
 import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
 import { parseFacets, enrichAnalysis } from './facet-parser.js';
+import { detectReport, waitForReport, getDefaultReportPath } from './report-detector.js';
 import { watchReport } from './watcher.js';
 import { aggregateReports, generateTeamOutput } from './team.js';
 import type { ReportData } from './types.js';
@@ -22,17 +23,38 @@ program
 program
   .command('analyze')
   .description('Parse an insight report HTML file and generate output files')
-  .argument('<file>', 'Path to the report.html file')
+  .argument('[file]', 'Path to the report.html file (auto-detects ~/.claude/usage-data/report.html)')
   .option('-o, --output-dir <path>', 'Output directory (skips interactive prompt)')
   .option('--apply', 'Merge output directly into the project (appends to CLAUDE.md, merges settings.json, places skills)')
   .option('--facets [dir]', 'Enrich analysis with facet data from ~/.claude/usage-data/facets/ (or specify a directory)')
-  .action(async (file: string, opts: { outputDir?: string; apply?: boolean; facets?: string | boolean }) => {
+  .option('--wait [seconds]', 'Wait for the report file to appear (default: 300s)')
+  .action(async (file: string | undefined, opts: { outputDir?: string; apply?: boolean; facets?: string | boolean; wait?: string | boolean }) => {
     try {
-      // 1. Parse
-      const filePath = resolve(file);
-      if (!existsSync(filePath)) {
-        console.error(`Error: File not found: ${filePath}`);
-        process.exit(1);
+      // 1. Detect report path
+      let filePath: string;
+
+      if (opts.wait !== undefined) {
+        // --wait mode: wait for report to appear
+        const targetPath = file ? resolve(file) : getDefaultReportPath();
+        const timeoutSec = typeof opts.wait === 'string' ? parseInt(opts.wait, 10) : 300;
+        const timeoutMs = timeoutSec * 1000;
+
+        if (existsSync(targetPath)) {
+          console.log(`\nReport found: ${targetPath}`);
+          filePath = targetPath;
+        } else {
+          console.log(`\nWaiting for report at ${targetPath}...`);
+          console.log('Run /insight in Claude Code to generate it.');
+          console.log(`(timeout: ${timeoutSec}s)\n`);
+          filePath = await waitForReport(targetPath, timeoutMs);
+          console.log(`\nReport appeared: ${filePath}`);
+        }
+      } else {
+        const detected = detectReport(file);
+        filePath = detected.path;
+        if (detected.source === 'auto-detected') {
+          console.log(`\nAuto-detected report: ${filePath}`);
+        }
       }
 
       console.log('\nParsing report...');
