@@ -7,6 +7,7 @@ import { analyze } from './analyzer.js';
 import { generate } from './generator.js';
 import { applyToProject, formatApplySummary } from './applier.js';
 import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
+import { parseFacets, enrichAnalysis } from './facet-parser.js';
 import type { ReportData } from './types.js';
 
 const program = new Command();
@@ -22,7 +23,8 @@ program
   .argument('<file>', 'Path to the report.html file')
   .option('-o, --output-dir <path>', 'Output directory (skips interactive prompt)')
   .option('--apply', 'Merge output directly into the project (appends to CLAUDE.md, merges settings.json, places skills)')
-  .action(async (file: string, opts: { outputDir?: string; apply?: boolean }) => {
+  .option('--facets [dir]', 'Enrich analysis with facet data from ~/.claude/usage-data/facets/ (or specify a directory)')
+  .action(async (file: string, opts: { outputDir?: string; apply?: boolean; facets?: string | boolean }) => {
     try {
       // 1. Parse
       const filePath = resolve(file);
@@ -44,7 +46,20 @@ program
       }
 
       // 2. Analyze
-      const output = analyze(data);
+      let output = analyze(data);
+
+      // 2b. Enrich with facet data if --facets is set
+      if (opts.facets !== undefined) {
+        const facetsDir = typeof opts.facets === 'string' ? resolve(opts.facets) : undefined;
+        const facetData = parseFacets(facetsDir);
+        if (facetData.sessionCount > 0) {
+          output = enrichAnalysis(output, facetData);
+          console.log(`✓ Enriched with facet data: ${facetData.sessionCount} sessions, ${facetData.toolUsage.length} tools tracked`);
+        } else {
+          console.log('✓ No facet data found (directory empty or missing)');
+        }
+      }
+
       console.log(`✓ Analyzed: ${output.todos.length} tasks, ${output.skills.length} skills generated`);
 
       if (opts.apply) {

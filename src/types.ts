@@ -125,6 +125,17 @@ export interface McpRecommendation {
   matchedFrictions: string[];
 }
 
+export interface FacetToolUsage {
+  toolName: string;
+  count: number;
+}
+
+export interface FacetData {
+  toolUsage: FacetToolUsage[];
+  averageSessionDurationMs: number;
+  sessionCount: number;
+}
+
 export interface AnalyzerOutput {
   todos: TodoItem[];
   claudeMdAdditions: string;
@@ -132,6 +143,7 @@ export interface AnalyzerOutput {
   skills: SkillFile[];
   readmeContent: string;
   mcpRecommendations: McpRecommendation[];
+  facetSummary?: FacetData;
 }
 
 export interface HistoryEntry {
