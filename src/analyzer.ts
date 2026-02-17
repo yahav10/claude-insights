@@ -38,7 +38,7 @@ export function buildTodos(data: ReportData, skills: SkillFile[]): TodoItem[] {
     todos.push({
       task: `Address friction: "${friction.title}"`,
       steps: skill
-        ? `1. Copy relevant rules from CLAUDE.md-additions.md to your CLAUDE.md\n2. Copy ${skill.filename} to .claude/skills/\n3. Test: run ${skillCmd} on your next relevant task`
+        ? `1. Copy relevant rules from CLAUDE.md-additions.md to your CLAUDE.md\n2. Copy ${skill.dirName}/${skill.filename} to .claude/skills/${skill.dirName}/\n3. Test: run ${skillCmd} on your next relevant task`
         : `1. Review the friction description\n2. Add guardrail rules to your CLAUDE.md`,
       priority: 'High',
       estTime: '5 min',
@@ -156,7 +156,8 @@ export function buildSkills(data: ReportData): SkillFile[] {
 
   for (const friction of data.frictions) {
     const skillName = toSkillName(friction.title);
-    const filename = `${skillName}.SKILL.md`;
+    const dirName = skillName;
+    const filename = 'SKILL.md';
 
     const matchingPattern = findBestMatch(friction.title, data.patterns.map(p => ({ text: p.title, item: p })));
     const matchingRule = findBestMatch(friction.title, data.claudeMdItems.map(c => ({ text: c.code, item: c })));
@@ -174,10 +175,15 @@ export function buildSkills(data: ReportData): SkillFile[] {
       : description;
 
     skills.push({
+      skillName,
+      dirName,
       filename,
       content: `---
 name: ${skillName}
 description: ${descYaml}
+allowed-tools: ["Read", "Glob", "Grep", "Bash"]
+context: fork
+argument-hint: "<file-or-component-path>"
 ---
 
 ## When to Use This Skill
@@ -444,16 +450,14 @@ export function significantWords(text: string): string[] {
 
 export function buildReadme(skills: SkillFile[]): string {
   const skillRows = skills.map(s => {
-    const name = s.filename.replace('.SKILL.md', '');
-    return `| \`.claude/skills/${s.filename}\` | \`/${name}\` skill | Copy to your project's \`.claude/skills/\` |`;
+    return `| \`.claude/skills/${s.dirName}/SKILL.md\` | \`/${s.skillName}\` skill | Copy to your project's \`.claude/skills/\` |`;
   }).join('\n');
 
   const skillTests = skills.map(s => {
-    const name = s.filename.replace('.SKILL.md', '');
     // Extract first line of description from frontmatter (handles both inline and multi-line |)
     const lines = s.content.split('\n');
     const descIdx = lines.findIndex(l => l.startsWith('description:'));
-    let desc = name;
+    let desc = s.skillName;
     if (descIdx !== -1) {
       const descLine = lines[descIdx];
       if (descLine.includes('|')) {
@@ -463,10 +467,10 @@ export function buildReadme(skills: SkillFile[]): string {
         desc = descLine.replace('description:', '').trim();
       }
     }
-    return `- \`/${name}\` — ${desc}`;
+    return `- \`/${s.skillName}\` — ${desc}`;
   }).join('\n');
 
-  const firstSkillName = skills.length > 0 ? skills[0].filename.replace('.SKILL.md', '') : 'insights-review';
+  const firstSkillName = skills.length > 0 ? skills[0].skillName : 'insights-review';
 
   return `# Insights Output — Placement Guide
 
@@ -483,7 +487,7 @@ ${skillRows}
 
 1. **CLAUDE.md**: Open \`CLAUDE.md-additions.md\`, copy the rules you want into your project's \`CLAUDE.md\`
 2. **Settings**: Open \`.claude/settings-insights.json\`, merge the hooks config into your existing \`.claude/settings.json\`
-3. **Skills**: Copy the \`.claude/skills/*.SKILL.md\` files into your project's \`.claude/skills/\` directory
+3. **Skills**: Copy the \`.claude/skills/\` directories into your project's \`.claude/skills/\` directory
 4. **Test**: Start a new Claude Code session and try \`/${firstSkillName}\` on your next task
 
 ## Testing Skills

@@ -99,6 +99,8 @@ export interface TodoItem {
 }
 
 export interface SkillFile {
+  skillName: string;
+  dirName: string;
   filename: string;
   content: string;
 }

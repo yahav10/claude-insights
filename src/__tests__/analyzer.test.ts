@@ -10,6 +10,7 @@ import {
   analyze,
   buildSettings,
   buildClaudeMdAdditions,
+  buildSkills,
 } from '../analyzer.js';
 import { makeReportData, makeFriction, makeClaudeMdItem } from './helpers.js';
 
@@ -236,8 +237,8 @@ describe('analyze (integration)', () => {
     });
     const output = analyze(data);
     expect(output.skills).toHaveLength(2);
-    expect(output.skills[0].filename).toContain('widget');
-    expect(output.skills[1].filename).toContain('css');
+    expect(output.skills[0].skillName).toContain('widget');
+    expect(output.skills[1].skillName).toContain('css');
   });
 
   it('produces empty output from empty data', () => {
@@ -297,6 +298,44 @@ describe('buildSettings', () => {
     });
     const result = buildSettings(data);
     expect(result).toEqual({});
+  });
+});
+
+describe('buildSkills', () => {
+  it('sets dirName to kebab-case skill name', () => {
+    const data = makeReportData({ frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })] });
+    const skills = buildSkills(data);
+    expect(skills[0].dirName).toBe('css-scoping-mistakes');
+  });
+
+  it('sets skillName to kebab-case name', () => {
+    const data = makeReportData({ frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })] });
+    const skills = buildSkills(data);
+    expect(skills[0].skillName).toBe('css-scoping-mistakes');
+  });
+
+  it('sets filename to SKILL.md for all skills', () => {
+    const data = makeReportData({ frictions: [makeFriction(), makeFriction({ title: 'Build Failures' })] });
+    const skills = buildSkills(data);
+    skills.forEach(s => expect(s.filename).toBe('SKILL.md'));
+  });
+
+  it('includes allowed-tools in frontmatter', () => {
+    const data = makeReportData({ frictions: [makeFriction()] });
+    const skills = buildSkills(data);
+    expect(skills[0].content).toContain('allowed-tools:');
+  });
+
+  it('includes context: fork in frontmatter', () => {
+    const data = makeReportData({ frictions: [makeFriction()] });
+    const skills = buildSkills(data);
+    expect(skills[0].content).toContain('context: fork');
+  });
+
+  it('includes argument-hint in frontmatter', () => {
+    const data = makeReportData({ frictions: [makeFriction()] });
+    const skills = buildSkills(data);
+    expect(skills[0].content).toContain('argument-hint:');
   });
 });
 

@@ -34,9 +34,11 @@ export function generate(output: AnalyzerOutput, outputDir: string): string[] {
   safeWrite(settingsPath, JSON.stringify(output.settingsJson, null, 2));
   files.push(settingsPath);
 
-  // 4. Skills
+  // 4. Skills (each in its own subdirectory)
   for (const skill of output.skills) {
-    const skillPath = join(outputDir, '.claude', 'skills', skill.filename);
+    const skillDir = join(outputDir, '.claude', 'skills', skill.dirName);
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, skill.filename);
     safeWrite(skillPath, skill.content);
     files.push(skillPath);
   }

@@ -42,9 +42,9 @@ describe('integration: full pipeline', () => {
     expect(existsSync(join(tempDir, '.claude', 'settings-insights.json'))).toBe(true);
     expect(existsSync(join(tempDir, 'insights-README.md'))).toBe(true);
 
-    // Verify skill files exist
+    // Verify skill files exist in directory structure
     for (const skill of output.skills) {
-      expect(existsSync(join(tempDir, '.claude', 'skills', skill.filename))).toBe(true);
+      expect(existsSync(join(tempDir, '.claude', 'skills', skill.dirName, 'SKILL.md'))).toBe(true);
     }
 
     // Verify file contents have expected structure

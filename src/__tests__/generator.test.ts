@@ -21,7 +21,9 @@ function makeOutput(overrides?: Partial<AnalyzerOutput>): AnalyzerOutput {
     settingsJson: { hooks: { 'pre-commit': 'npm run lint' } },
     skills: [
       {
-        filename: 'widget-errors.SKILL.md',
+        skillName: 'widget-errors',
+        dirName: 'widget-errors',
+        filename: 'SKILL.md',
         content: '---\nname: widget-errors\ndescription: Fix widget errors\n---\n\n## Steps\n\n1. Diagnose\n',
       },
     ],
@@ -47,7 +49,7 @@ describe('generator', () => {
     expect(existsSync(join(tempDir, 'insights-todo.md'))).toBe(true);
     expect(existsSync(join(tempDir, 'CLAUDE.md-additions.md'))).toBe(true);
     expect(existsSync(join(tempDir, '.claude', 'settings-insights.json'))).toBe(true);
-    expect(existsSync(join(tempDir, '.claude', 'skills', 'widget-errors.SKILL.md'))).toBe(true);
+    expect(existsSync(join(tempDir, '.claude', 'skills', 'widget-errors', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(tempDir, 'insights-README.md'))).toBe(true);
     expect(files).toHaveLength(5);
   });
@@ -56,16 +58,16 @@ describe('generator', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'ci-gen-'));
     const output = makeOutput({
       skills: [
-        { filename: 'skill-one.SKILL.md', content: 'Skill one content' },
-        { filename: 'skill-two.SKILL.md', content: 'Skill two content' },
+        { skillName: 'skill-one', dirName: 'skill-one', filename: 'SKILL.md', content: 'Skill one content' },
+        { skillName: 'skill-two', dirName: 'skill-two', filename: 'SKILL.md', content: 'Skill two content' },
       ],
     });
     generate(output, tempDir);
 
-    expect(existsSync(join(tempDir, '.claude', 'skills', 'skill-one.SKILL.md'))).toBe(true);
-    expect(existsSync(join(tempDir, '.claude', 'skills', 'skill-two.SKILL.md'))).toBe(true);
+    expect(existsSync(join(tempDir, '.claude', 'skills', 'skill-one', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(tempDir, '.claude', 'skills', 'skill-two', 'SKILL.md'))).toBe(true);
 
-    const content = readFileSync(join(tempDir, '.claude', 'skills', 'skill-one.SKILL.md'), 'utf-8');
+    const content = readFileSync(join(tempDir, '.claude', 'skills', 'skill-one', 'SKILL.md'), 'utf-8');
     expect(content).toBe('Skill one content');
   });
 
@@ -77,7 +79,7 @@ describe('generator', () => {
     expect(files).toContain(join(tempDir, 'insights-todo.md'));
     expect(files).toContain(join(tempDir, 'CLAUDE.md-additions.md'));
     expect(files).toContain(join(tempDir, '.claude', 'settings-insights.json'));
-    expect(files).toContain(join(tempDir, '.claude', 'skills', 'widget-errors.SKILL.md'));
+    expect(files).toContain(join(tempDir, '.claude', 'skills', 'widget-errors', 'SKILL.md'));
     expect(files).toContain(join(tempDir, 'insights-README.md'));
   });
 
@@ -120,5 +122,31 @@ describe('generator', () => {
 
     const settingsRaw = readFileSync(join(tempDir, '.claude', 'settings-insights.json'), 'utf-8');
     expect(JSON.parse(settingsRaw)).toEqual({});
+  });
+
+  it('creates skill subdirectory under .claude/skills/', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ci-gen-'));
+    const output = makeOutput({
+      skills: [
+        { skillName: 'widget-errors', dirName: 'widget-errors', filename: 'SKILL.md', content: 'Skill content' },
+      ],
+    });
+    generate(output, tempDir);
+
+    expect(existsSync(join(tempDir, '.claude', 'skills', 'widget-errors'))).toBe(true);
+  });
+
+  it('writes SKILL.md inside the skill subdirectory', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ci-gen-'));
+    const output = makeOutput({
+      skills: [
+        { skillName: 'widget-errors', dirName: 'widget-errors', filename: 'SKILL.md', content: 'Skill content here' },
+      ],
+    });
+    generate(output, tempDir);
+
+    const skillPath = join(tempDir, '.claude', 'skills', 'widget-errors', 'SKILL.md');
+    expect(existsSync(skillPath)).toBe(true);
+    expect(readFileSync(skillPath, 'utf-8')).toBe('Skill content here');
   });
 });
