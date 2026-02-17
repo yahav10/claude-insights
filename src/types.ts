@@ -194,3 +194,27 @@ export interface WatchOptions {
 export interface WatchHandle {
   stop: () => void;
 }
+
+export interface TeamFriction {
+  title: string;
+  description: string;
+  examples: string[];
+  memberCount: number;
+  members: string[];
+}
+
+export interface TeamRule {
+  code: string;
+  why: string;
+  memberCount: number;
+  priority: 'High' | 'Medium' | 'Low';
+}
+
+export interface TeamReport {
+  memberCount: number;
+  totalMessages: number;
+  totalSessions: number;
+  frictions: TeamFriction[];
+  rules: TeamRule[];
+  allReports: ReportData[];
+}

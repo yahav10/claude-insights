@@ -9,6 +9,7 @@ import { applyToProject, formatApplySummary } from './applier.js';
 import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
 import { parseFacets, enrichAnalysis } from './facet-parser.js';
 import { watchReport } from './watcher.js';
+import { aggregateReports, generateTeamOutput } from './team.js';
 import type { ReportData } from './types.js';
 
 const program = new Command();
@@ -197,6 +198,65 @@ program
       handle.stop();
       process.exit(0);
     });
+  });
+
+program
+  .command('team')
+  .description('Merge multiple insight reports into shared team insights')
+  .argument('<files...>', 'Paths to report.html files')
+  .requiredOption('-o, --output-dir <path>', 'Output directory for generated files')
+  .action((files: string[], opts: { outputDir: string }) => {
+    try {
+      if (files.length < 2) {
+        console.error('Error: At least 2 report files are required for team aggregation.');
+        process.exit(1);
+      }
+
+      // 1. Validate all files exist
+      const filePaths = files.map(f => resolve(f));
+      for (const fp of filePaths) {
+        if (!existsSync(fp)) {
+          console.error(`Error: File not found: ${fp}`);
+          process.exit(1);
+        }
+      }
+
+      // 2. Parse all reports
+      console.log(`\nParsing ${filePaths.length} reports...`);
+      const reports = filePaths.map((fp, i) => {
+        const data = parseReport(fp);
+        const messagesStat = data.stats.find(s => s.label.toLowerCase() === 'messages');
+        console.log(`  Report ${i + 1}: ${messagesStat?.value ?? '?'} messages, ${data.frictions.length} frictions`);
+        return data;
+      });
+
+      // 3. Aggregate
+      const teamReport = aggregateReports(reports);
+      console.log(`\n✓ Aggregated: ${teamReport.memberCount} members, ${teamReport.totalMessages} total messages, ${teamReport.totalSessions} total sessions`);
+      console.log(`  ${teamReport.frictions.length} unique frictions, ${teamReport.rules.length} unique rules`);
+
+      // 4. Generate team output
+      const output = generateTeamOutput(teamReport);
+      console.log(`✓ Analyzed: ${output.todos.length} tasks, ${output.skills.length} skills generated`);
+
+      // 5. Write files
+      const outputDir = resolve(opts.outputDir);
+      const generatedFiles = generate(output, outputDir);
+      console.log(`\n✓ Generated ${generatedFiles.length} files in ${outputDir}/:`);
+      for (const f of generatedFiles) {
+        const relative = f.replace(outputDir + '/', '');
+        console.log(`  - ${relative}`);
+      }
+
+      console.log('\nNext steps:');
+      console.log('  1. Read insights-README.md for placement instructions');
+      console.log('  2. Share CLAUDE.md-additions.md with your team');
+      console.log('  3. Copy skills to .claude/skills/ in your shared project');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nError: ${message}`);
+      process.exit(1);
+    }
   });
 
 program.parse();
