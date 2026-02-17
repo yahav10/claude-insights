@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getDefaultReportPath, detectReport } from '../report-detector.js';
+import { getDefaultReportPath, detectReport, waitForReport } from '../report-detector.js';
 
 describe('getDefaultReportPath', () => {
   it('returns path under home directory ending with .claude/usage-data/report.html', () => {
@@ -77,5 +77,43 @@ describe('detectReport', () => {
     const result = detectReport(filePath);
 
     expect(result.source).toBe('argument');
+  });
+});
+
+describe('waitForReport', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ci-wait-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('resolves immediately when file already exists', async () => {
+    const filePath = join(tempDir, 'report.html');
+    writeFileSync(filePath, '<html></html>');
+
+    const result = await waitForReport(filePath, 5000);
+    expect(result).toBe(filePath);
+  });
+
+  it('resolves when file appears after waiting', async () => {
+    const filePath = join(tempDir, 'report.html');
+
+    // Create the file after 200ms
+    setTimeout(() => {
+      writeFileSync(filePath, '<html></html>');
+    }, 200);
+
+    const result = await waitForReport(filePath, 5000);
+    expect(result).toBe(filePath);
+  });
+
+  it('rejects on timeout when file never appears', async () => {
+    const filePath = join(tempDir, 'never-created.html');
+
+    await expect(waitForReport(filePath, 500)).rejects.toThrow('timed out');
   });
 });
