@@ -133,3 +133,22 @@ export interface AnalyzerOutput {
   readmeContent: string;
   mcpRecommendations: McpRecommendation[];
 }
+
+export interface HistoryEntry {
+  date: string;
+  reportFile: string;
+  frictionCount: number;
+  frictionTitles: string[];
+  skillCount: number;
+  todoCount: number;
+  claudeMdItemCount: number;
+}
+
+export interface TrendReport {
+  current: HistoryEntry;
+  previous: HistoryEntry | null;
+  newFrictions: string[];
+  resolvedFrictions: string[];
+  frictionCountDelta: number;
+  summary: string;
+}

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { parseReport } from './parser.js';
 import { analyze } from './analyzer.js';
 import { generate } from './generator.js';
+import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
 import type { ReportData } from './types.js';
 
 const program = new Command();
@@ -60,7 +61,14 @@ program
         console.log(`  - ${relative}`);
       }
 
-      console.log('\nNext steps:');
+      // Save history and show trend
+      const historyEntry = toHistoryEntry(data, output, filePath);
+      const previousEntry = getLatestEntry();  // Get BEFORE saving
+      saveHistoryEntry(historyEntry);           // Then save
+      const trend = buildTrendReport(historyEntry, previousEntry);
+      console.log(formatTrendReport(trend));
+
+      console.log('Next steps:');
       console.log('  1. Read insights-README.md for placement instructions');
       console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
       if (Object.keys(output.settingsJson).length > 0) {
@@ -103,5 +111,27 @@ async function promptForOutputDir(data: ReportData): Promise<string> {
   rl.close();
   return dir;
 }
+
+program
+  .command('history')
+  .description('List past analysis runs')
+  .action(() => {
+    const entries = loadHistoryEntries();
+    console.log(formatHistoryTable(entries));
+  });
+
+program
+  .command('diff')
+  .description('Compare two analysis runs')
+  .argument('<date1>', 'First date (YYYY-MM-DD)')
+  .argument('<date2>', 'Second date (YYYY-MM-DD)')
+  .action((date1: string, date2: string) => {
+    const entry1 = loadEntry(date1);
+    const entry2 = loadEntry(date2);
+    if (!entry1) { console.error(`No history found for ${date1}`); process.exit(1); }
+    if (!entry2) { console.error(`No history found for ${date2}`); process.exit(1); }
+    const trend = buildTrendReport(entry2, entry1);
+    console.log(formatTrendReport(trend));
+  });
 
 program.parse();
