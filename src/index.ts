@@ -18,7 +18,7 @@ const program = new Command();
 program
   .name('claude-insights')
   .description('Analyze Claude Code /insight reports and generate actionable files')
-  .version('1.1.0');
+  .version('1.2.0');
 
 program
   .command('analyze')
