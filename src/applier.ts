@@ -3,6 +3,14 @@ import { join } from 'node:path';
 import { significantWords } from './analyzer.js';
 import type { AnalyzerOutput, SkillFile, ApplyResult } from './types.js';
 
+function safeWrite(filePath: string, content: string): void {
+  try {
+    writeFileSync(filePath, content);
+  } catch (err) {
+    throw new Error(`Failed to write ${filePath}: ${(err as Error).message}`, { cause: err });
+  }
+}
+
 /**
  * Extract rule paragraphs from the claudeMdAdditions string.
  * Rules are non-empty paragraphs that are not headers and not "Why" blockquotes.
@@ -73,17 +81,23 @@ export function mergeClaudeMd(output: AnalyzerOutput, projectDir: string): { sta
     return { status: 'unchanged', rulesAdded: 0, rulesSkipped };
   }
 
+  const SECTION_HEADER = '## Claude Insights Additions';
   let newContent: string;
   if (fileExists) {
-    // Append to existing file under a new section
-    const additionsSection = '\n\n## Claude Insights Additions\n\n' + rulesToAdd.join('\n\n') + '\n';
-    newContent = existingContent.trimEnd() + additionsSection;
+    // Check if the section already exists to avoid duplicate headers
+    if (existingContent.includes(SECTION_HEADER)) {
+      // Append rules under the existing section
+      newContent = existingContent.trimEnd() + '\n\n' + rulesToAdd.join('\n\n') + '\n';
+    } else {
+      const additionsSection = '\n\n' + SECTION_HEADER + '\n\n' + rulesToAdd.join('\n\n') + '\n';
+      newContent = existingContent.trimEnd() + additionsSection;
+    }
   } else {
     // Create new file with just the additions
-    newContent = '## Claude Insights Additions\n\n' + rulesToAdd.join('\n\n') + '\n';
+    newContent = SECTION_HEADER + '\n\n' + rulesToAdd.join('\n\n') + '\n';
   }
 
-  writeFileSync(claudeMdPath, newContent);
+  safeWrite(claudeMdPath, newContent);
 
   return {
     status: fileExists ? 'updated' : 'created',
@@ -179,18 +193,13 @@ export function mergeSettings(output: AnalyzerOutput, projectDir: string): 'crea
     existing.mcpServers = existingMcp;
   }
 
-  if (!fileExists) {
-    mkdirSync(settingsDir, { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify(existing, null, 2));
-    return 'created';
-  }
-
-  if (!changed) {
+  if (!changed && fileExists) {
     return 'unchanged';
   }
 
-  writeFileSync(settingsPath, JSON.stringify(existing, null, 2));
-  return 'updated';
+  mkdirSync(settingsDir, { recursive: true });
+  safeWrite(settingsPath, JSON.stringify(existing, null, 2));
+  return fileExists ? 'updated' : 'created';
 }
 
 /**
@@ -203,7 +212,7 @@ export function placeSkills(skills: SkillFile[], projectDir: string): number {
   for (const skill of skills) {
     const skillDir = join(projectDir, '.claude', 'skills', skill.dirName);
     mkdirSync(skillDir, { recursive: true });
-    writeFileSync(join(skillDir, skill.filename), skill.content);
+    safeWrite(join(skillDir, skill.filename), skill.content);
   }
 
   return skills.length;
