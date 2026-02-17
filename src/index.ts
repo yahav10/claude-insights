@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { parseReport } from './parser.js';
 import { analyze } from './analyzer.js';
 import { generate } from './generator.js';
+import { applyToProject, formatApplySummary } from './applier.js';
 import { saveHistoryEntry, getLatestEntry, loadHistoryEntries, loadEntry, toHistoryEntry, buildTrendReport, formatTrendReport, formatHistoryTable } from './history.js';
 import type { ReportData } from './types.js';
 
@@ -13,14 +14,15 @@ const program = new Command();
 program
   .name('claude-insights')
   .description('Analyze Claude Code /insight reports and generate actionable files')
-  .version('1.0.0');
+  .version('1.1.0');
 
 program
   .command('analyze')
   .description('Parse an insight report HTML file and generate output files')
   .argument('<file>', 'Path to the report.html file')
   .option('-o, --output-dir <path>', 'Output directory (skips interactive prompt)')
-  .action(async (file: string, opts: { outputDir?: string }) => {
+  .option('--apply', 'Merge output directly into the project (appends to CLAUDE.md, merges settings.json, places skills)')
+  .action(async (file: string, opts: { outputDir?: string; apply?: boolean }) => {
     try {
       // 1. Parse
       const filePath = resolve(file);
@@ -45,38 +47,54 @@ program
       const output = analyze(data);
       console.log(`✓ Analyzed: ${output.todos.length} tasks, ${output.skills.length} skills generated`);
 
-      // 3. Determine output dir
-      let outputDir: string;
-      if (opts.outputDir) {
-        outputDir = resolve(opts.outputDir);
+      if (opts.apply) {
+        // --apply mode: merge directly into the project
+        const projectDir = opts.outputDir ? resolve(opts.outputDir) : resolve('.');
+        console.log(`\nApplying to project: ${projectDir}`);
+
+        const result = applyToProject(output, projectDir);
+        console.log(formatApplySummary(result));
+
+        // Save history and show trend
+        const historyEntry = toHistoryEntry(data, output, filePath);
+        const previousEntry = getLatestEntry();
+        saveHistoryEntry(historyEntry);
+        const trend = buildTrendReport(historyEntry, previousEntry);
+        console.log(formatTrendReport(trend));
       } else {
-        outputDir = await promptForOutputDir(data);
-      }
+        // Standard generate mode
+        let outputDir: string;
+        if (opts.outputDir) {
+          outputDir = resolve(opts.outputDir);
+        } else {
+          outputDir = await promptForOutputDir(data);
+        }
 
-      // 4. Generate
-      const files = generate(output, outputDir);
-      console.log(`\n✓ Generated ${files.length} files in ${outputDir}/:`);
-      for (const f of files) {
-        const relative = f.replace(outputDir + '/', '');
-        console.log(`  - ${relative}`);
-      }
+        // 4. Generate
+        const files = generate(output, outputDir);
+        console.log(`\n✓ Generated ${files.length} files in ${outputDir}/:`);
+        for (const f of files) {
+          const relative = f.replace(outputDir + '/', '');
+          console.log(`  - ${relative}`);
+        }
 
-      // Save history and show trend
-      const historyEntry = toHistoryEntry(data, output, filePath);
-      const previousEntry = getLatestEntry();  // Get BEFORE saving
-      saveHistoryEntry(historyEntry);           // Then save
-      const trend = buildTrendReport(historyEntry, previousEntry);
-      console.log(formatTrendReport(trend));
+        // Save history and show trend
+        const historyEntry = toHistoryEntry(data, output, filePath);
+        const previousEntry = getLatestEntry();  // Get BEFORE saving
+        saveHistoryEntry(historyEntry);           // Then save
+        const trend = buildTrendReport(historyEntry, previousEntry);
+        console.log(formatTrendReport(trend));
 
-      console.log('Next steps:');
-      console.log('  1. Read insights-README.md for placement instructions');
-      console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
-      if (Object.keys(output.settingsJson).length > 0) {
-        console.log('  3. Merge settings-insights.json into .claude/settings.json');
-      }
-      if (output.skills.length > 0) {
-        const firstSkill = output.skills[0].filename.replace('.SKILL.md', '');
-        console.log(`  ${Object.keys(output.settingsJson).length > 0 ? '4' : '3'}. Copy skills to .claude/skills/ and test with /${firstSkill}`);
+        console.log('Next steps:');
+        console.log('  1. Read insights-README.md for placement instructions');
+        console.log('  2. Copy CLAUDE.md-additions.md rules into your CLAUDE.md');
+        if (Object.keys(output.settingsJson).length > 0) {
+          console.log('  3. Merge settings-insights.json into .claude/settings.json');
+        }
+        if (output.skills.length > 0) {
+          const firstSkill = output.skills[0].filename.replace('.SKILL.md', '');
+          console.log(`  ${Object.keys(output.settingsJson).length > 0 ? '4' : '3'}. Copy skills to .claude/skills/ and test with /${firstSkill}`);
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -152,3 +152,23 @@ export interface TrendReport {
   frictionCountDelta: number;
   summary: string;
 }
+
+export interface ApplyResult {
+  claudeMdStatus: 'created' | 'updated' | 'unchanged';
+  settingsStatus: 'created' | 'updated' | 'unchanged';
+  skillsPlaced: number;
+  rulesAdded: number;
+  rulesSkipped: number;
+}
+
+export interface PipelineOptions {
+  outputDir?: string;
+  apply?: boolean;
+  facets?: boolean;
+}
+
+export interface PipelineResult {
+  data: ReportData;
+  output: AnalyzerOutput;
+  files: string[];
+}
