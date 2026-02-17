@@ -12,6 +12,7 @@ import {
   buildClaudeMdAdditions,
   buildSkills,
   mapFrictionToHooks,
+  buildMcpRecommendations,
 } from '../analyzer.js';
 import { makeReportData, makeFriction, makeClaudeMdItem } from './helpers.js';
 
@@ -249,6 +250,7 @@ describe('analyze (integration)', () => {
     expect(output.todos).toHaveLength(0);
     expect(output.claudeMdAdditions).toContain('CLAUDE.md Additions');
     expect(output.settingsJson).toEqual({});
+    expect(output.mcpRecommendations).toHaveLength(0);
   });
 
   it('generates todos for frictions, claude-md items, features, and patterns', () => {
@@ -264,6 +266,13 @@ describe('analyze (integration)', () => {
     expect(sources).toContain('claude-md');
     expect(sources).toContain('feature');
     expect(sources).toContain('pattern');
+  });
+
+  it('includes mcpRecommendations in output', () => {
+    const data = makeReportData({ frictions: [makeFriction()] });
+    const output = analyze(data);
+    expect(output).toHaveProperty('mcpRecommendations');
+    expect(Array.isArray(output.mcpRecommendations)).toBe(true);
   });
 });
 
@@ -488,5 +497,76 @@ describe('buildClaudeMdAdditions', () => {
     expect(result).toContain('# CLAUDE.md Additions');
     expect(result).not.toContain('## General Rules');
     expect(result).not.toContain('## CSS & Styling');
+  });
+});
+
+describe('buildMcpRecommendations', () => {
+  it('matches CSS friction to playwright MCP server', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    expect(recs.length).toBeGreaterThan(0);
+    const pw = recs.find(r => r.serverName === 'playwright');
+    expect(pw).toBeDefined();
+  });
+
+  it('matches database friction to postgres MCP server', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'SQL Query Failures', description: 'Database queries returning wrong results' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    const pg = recs.find(r => r.serverName === 'postgres');
+    expect(pg).toBeDefined();
+  });
+
+  it('returns empty array when no frictions match any server', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'Completely Unknown Category', description: 'Nothing recognizable' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    expect(recs).toHaveLength(0);
+  });
+
+  it('deduplicates when multiple frictions match same server', () => {
+    const data = makeReportData({
+      frictions: [
+        makeFriction({ title: 'CSS Scoping Mistakes' }),
+        makeFriction({ title: 'Visual Layout Failures' }),
+      ],
+    });
+    const recs = buildMcpRecommendations(data);
+    const pwCount = recs.filter(r => r.serverName === 'playwright').length;
+    expect(pwCount).toBeLessThanOrEqual(1);
+  });
+
+  it('includes matched friction titles in recommendation', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    const pw = recs.find(r => r.serverName === 'playwright');
+    expect(pw?.matchedFrictions).toContain('CSS Scoping Mistakes');
+  });
+
+  it('generates valid config block for each recommendation', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    recs.forEach(r => {
+      expect(r.configBlock).toBeDefined();
+      expect(typeof r.configBlock).toBe('object');
+    });
+  });
+
+  it('includes install command for each recommendation', () => {
+    const data = makeReportData({
+      frictions: [makeFriction({ title: 'CSS Scoping Mistakes' })],
+    });
+    const recs = buildMcpRecommendations(data);
+    recs.forEach(r => {
+      expect(r.installCommand).toBeTruthy();
+    });
   });
 });

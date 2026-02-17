@@ -28,6 +28,7 @@ function makeOutput(overrides?: Partial<AnalyzerOutput>): AnalyzerOutput {
       },
     ],
     readmeContent: '# Insights Output\n\nPlacement guide content here.\n',
+    mcpRecommendations: [],
     ...overrides,
   };
 }

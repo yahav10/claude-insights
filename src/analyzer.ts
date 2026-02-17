@@ -1,12 +1,13 @@
-import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard, HookConfig, HookEvent } from './types.js';
+import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard, HookConfig, HookEvent, McpRecommendation } from './types.js';
 
 export function analyze(data: ReportData): AnalyzerOutput {
   const skills = buildSkills(data);
   const todos = buildTodos(data, skills);
   const claudeMdAdditions = buildClaudeMdAdditions(data);
   const settingsJson = buildSettings(data);
-  const readmeContent = buildReadme(skills);
-  return { todos, claudeMdAdditions, settingsJson, skills, readmeContent };
+  const mcpRecommendations = buildMcpRecommendations(data);
+  const readmeContent = buildReadme(skills, mcpRecommendations);
+  return { todos, claudeMdAdditions, settingsJson, skills, readmeContent, mcpRecommendations };
 }
 
 /** Derive a short kebab-case skill name, stripping filler adjectives */
@@ -585,7 +586,117 @@ export function significantWords(text: string): string[] {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w));
 }
 
-export function buildReadme(skills: SkillFile[]): string {
+interface McpServerEntry {
+  serverName: string;
+  keywords: string[];
+  description: string;
+  installCommand: string;
+  configBlock: Record<string, unknown>;
+}
+
+const MCP_SERVER_REGISTRY: McpServerEntry[] = [
+  {
+    serverName: 'playwright',
+    keywords: ['css', 'styling', 'visual', 'layout', 'screenshot', 'browser', 'dom'],
+    description: 'Visual testing, screenshot verification, and browser automation',
+    installCommand: 'npx @anthropic-ai/mcp-server-playwright',
+    configBlock: {
+      command: 'npx',
+      args: ['@anthropic-ai/mcp-server-playwright'],
+    },
+  },
+  {
+    serverName: 'postgres',
+    keywords: ['database', 'sql', 'query', 'table', 'migration', 'schema'],
+    description: 'Direct database access for query validation and schema inspection',
+    installCommand: 'npx @anthropic-ai/mcp-server-postgres',
+    configBlock: {
+      command: 'npx',
+      args: ['@anthropic-ai/mcp-server-postgres', 'postgresql://localhost/mydb'],
+    },
+  },
+  {
+    serverName: 'fetch',
+    keywords: ['api', 'http', 'endpoint', 'request', 'response', 'rest'],
+    description: 'HTTP request testing and API response verification',
+    installCommand: 'npx @anthropic-ai/mcp-server-fetch',
+    configBlock: {
+      command: 'npx',
+      args: ['@anthropic-ai/mcp-server-fetch'],
+    },
+  },
+  {
+    serverName: 'filesystem',
+    keywords: ['file', 'directory', 'path', 'search', 'find'],
+    description: 'Enhanced file search and manipulation beyond built-in tools',
+    installCommand: 'npx @anthropic-ai/mcp-server-filesystem',
+    configBlock: {
+      command: 'npx',
+      args: ['@anthropic-ai/mcp-server-filesystem', '/path/to/project'],
+    },
+  },
+  {
+    serverName: 'git',
+    keywords: ['git', 'branch', 'merge', 'commit', 'version', 'rebase'],
+    description: 'Advanced git operations and repository management',
+    installCommand: 'npx @anthropic-ai/mcp-server-git',
+    configBlock: {
+      command: 'npx',
+      args: ['@anthropic-ai/mcp-server-git'],
+    },
+  },
+];
+
+export function buildMcpRecommendations(data: ReportData): McpRecommendation[] {
+  const recommendations = new Map<string, McpRecommendation>();
+
+  for (const friction of data.frictions) {
+    const combined = `${friction.title} ${friction.description}`.toLowerCase();
+
+    for (const entry of MCP_SERVER_REGISTRY) {
+      if (entry.keywords.some(kw => combined.includes(kw))) {
+        const existing = recommendations.get(entry.serverName);
+        if (existing) {
+          if (!existing.matchedFrictions.includes(friction.title)) {
+            existing.matchedFrictions.push(friction.title);
+          }
+        } else {
+          recommendations.set(entry.serverName, {
+            serverName: entry.serverName,
+            description: entry.description,
+            installCommand: entry.installCommand,
+            configBlock: entry.configBlock,
+            matchedFrictions: [friction.title],
+          });
+        }
+      }
+    }
+  }
+
+  return Array.from(recommendations.values());
+}
+
+function buildMcpSection(mcpRecommendations: McpRecommendation[]): string {
+  if (mcpRecommendations.length === 0) return '';
+
+  let section = '\n## Recommended MCP Servers\n\n';
+  section += 'Based on your friction patterns, these MCP servers could help:\n\n';
+
+  for (const rec of mcpRecommendations) {
+    section += `### ${rec.serverName}\n\n`;
+    section += `${rec.description}\n\n`;
+    section += `**Install**: \`${rec.installCommand}\`\n\n`;
+    section += `**Matched frictions**: ${rec.matchedFrictions.join(', ')}\n\n`;
+    section += '**Config block** (add to `.claude/settings.json` under `mcpServers`):\n\n';
+    section += '```json\n';
+    section += `"${rec.serverName}": ${JSON.stringify(rec.configBlock, null, 2)}\n`;
+    section += '```\n\n';
+  }
+
+  return section;
+}
+
+export function buildReadme(skills: SkillFile[], mcpRecommendations: McpRecommendation[] = []): string {
   const skillRows = skills.map(s => {
     return `| \`.claude/skills/${s.dirName}/SKILL.md\` | \`/${s.skillName}\` skill | Copy to your project's \`.claude/skills/\` |`;
   }).join('\n');
@@ -630,5 +741,5 @@ ${skillRows}
 ## Testing Skills
 
 ${skillTests}
-`;
+${buildMcpSection(mcpRecommendations)}`;
 }

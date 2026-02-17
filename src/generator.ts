@@ -29,9 +29,17 @@ export function generate(output: AnalyzerOutput, outputDir: string): string[] {
   safeWrite(claudeMdPath, output.claudeMdAdditions);
   files.push(claudeMdPath);
 
-  // 3. settings-insights.json
+  // 3. settings-insights.json (with MCP server configs if any)
+  const settingsWithMcp = { ...output.settingsJson };
+  if (output.mcpRecommendations.length > 0) {
+    const mcpServers: Record<string, unknown> = {};
+    for (const rec of output.mcpRecommendations) {
+      mcpServers[rec.serverName] = rec.configBlock;
+    }
+    settingsWithMcp.mcpServers = mcpServers;
+  }
   const settingsPath = join(outputDir, '.claude', 'settings-insights.json');
-  safeWrite(settingsPath, JSON.stringify(output.settingsJson, null, 2));
+  safeWrite(settingsPath, JSON.stringify(settingsWithMcp, null, 2));
   files.push(settingsPath);
 
   // 4. Skills (each in its own subdirectory)

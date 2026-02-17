@@ -117,10 +117,19 @@ export interface HookConfig {
   description: string;
 }
 
+export interface McpRecommendation {
+  serverName: string;
+  description: string;
+  installCommand: string;
+  configBlock: Record<string, unknown>;
+  matchedFrictions: string[];
+}
+
 export interface AnalyzerOutput {
   todos: TodoItem[];
   claudeMdAdditions: string;
   settingsJson: Record<string, unknown>;
   skills: SkillFile[];
   readmeContent: string;
+  mcpRecommendations: McpRecommendation[];
 }
