@@ -4,6 +4,7 @@ import { parseReport } from './parser.js';
 import { analyze } from './analyzer.js';
 import { generate } from './generator.js';
 import { applyToProject } from './applier.js';
+import { filterAnnotatedFrictions } from './annotations.js';
 import type { PipelineOptions, PipelineResult } from './types.js';
 
 /**
@@ -18,6 +19,15 @@ export function runPipeline(filePath: string, options: PipelineOptions = {}): Pi
 
   // 1. Parse
   const data = parseReport(resolvedPath);
+
+  // 1b. Filter false-positive frictions
+  if (!options.skipAnnotationFilter) {
+    const filterResult = filterAnnotatedFrictions(data.frictions, options.annotationsPath);
+    if (filterResult.skippedCount > 0) {
+      console.log(`\u26a0\ufe0f  ${filterResult.skippedCount} friction(s) marked as false-positive (skipped)`);
+      data.frictions = filterResult.filteredFrictions;
+    }
+  }
 
   // 2. Analyze
   const output = analyze(data);

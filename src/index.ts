@@ -11,6 +11,7 @@ import { parseFacets, enrichAnalysis } from './facet-parser.js';
 import { detectReport, waitForReport, getDefaultReportPath } from './report-detector.js';
 import { watchReport } from './watcher.js';
 import { aggregateReports, generateTeamOutput } from './team.js';
+import { filterAnnotatedFrictions, loadAnnotations, setAnnotation, clearAnnotation, formatAnnotationList, runInteractiveAnnotation } from './annotations.js';
 import type { ReportData } from './types.js';
 
 const program = new Command();
@@ -18,7 +19,7 @@ const program = new Command();
 program
   .name('claude-insights')
   .description('Analyze Claude Code /insight reports and generate actionable files')
-  .version('1.2.0');
+  .version('1.3.0');
 
 program
   .command('analyze')
@@ -60,9 +61,18 @@ program
       console.log('\nParsing report...');
       const data = parseReport(filePath);
 
+      // Filter false-positive frictions
+      const annotationFilter = filterAnnotatedFrictions(data.frictions);
+      if (annotationFilter.skippedCount > 0) {
+        data.frictions = annotationFilter.filteredFrictions;
+      }
+
       const messagesStat = data.stats.find(s => s.label.toLowerCase() === 'messages');
       console.log(`\n✓ Parsed report: ${messagesStat?.value ?? '?'} messages, ${data.subtitle}`);
       console.log(`  ${data.frictions.length} friction areas, ${data.wins.length} strengths, ${data.claudeMdItems.length} CLAUDE.md suggestions`);
+      if (annotationFilter.skippedCount > 0) {
+        console.log(`  \u26a0\ufe0f  ${annotationFilter.skippedCount} friction(s) marked as false-positive (skipped): ${annotationFilter.skippedTitles.join(', ')}`);
+      }
 
       if (data.frictions.length === 0 && data.claudeMdItems.length === 0) {
         console.warn('\nWarning: No frictions or CLAUDE.md suggestions found in the report.');
@@ -274,6 +284,88 @@ program
       console.log('  1. Read insights-README.md for placement instructions');
       console.log('  2. Share CLAUDE.md-additions.md with your team');
       console.log('  3. Copy skills to .claude/skills/ in your shared project');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nError: ${message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('annotate')
+  .description('Mark frictions as useful or false-positive to filter them from future runs')
+  .argument('[file]', 'Path to report.html for interactive mode (auto-detects if omitted)')
+  .option('--false-positive <title>', 'Mark a friction as false-positive by title')
+  .option('--useful <title>', 'Mark a friction as useful by title')
+  .option('--list', 'Show current annotations')
+  .option('--clear [title]', 'Clear annotation for a specific friction, or all if no title given')
+  .action(async (
+    file: string | undefined,
+    opts: {
+      falsePositive?: string;
+      useful?: string;
+      list?: boolean;
+      clear?: string | boolean;
+    },
+  ) => {
+    try {
+      // --list
+      if (opts.list) {
+        console.log(formatAnnotationList());
+        return;
+      }
+
+      // --clear
+      if (opts.clear !== undefined) {
+        const title = typeof opts.clear === 'string' ? opts.clear : undefined;
+        const count = clearAnnotation(title);
+        if (title) {
+          console.log(count > 0
+            ? `Cleared annotation for "${title}".`
+            : `No annotation found matching "${title}".`);
+        } else {
+          console.log(`Cleared all ${count} annotation(s).`);
+        }
+        return;
+      }
+
+      // --false-positive <title>
+      if (opts.falsePositive) {
+        const annotation = setAnnotation(opts.falsePositive, 'false-positive');
+        console.log(`Marked "${annotation.frictionTitle}" as false-positive.`);
+        console.log('This friction will be skipped in future pipeline runs.');
+        return;
+      }
+
+      // --useful <title>
+      if (opts.useful) {
+        const annotation = setAnnotation(opts.useful, 'useful');
+        console.log(`Marked "${annotation.frictionTitle}" as useful.`);
+        return;
+      }
+
+      // Interactive mode
+      const detected = detectReport(file);
+      if (detected.source === 'auto-detected') {
+        console.log(`\nAuto-detected report: ${detected.path}`);
+      }
+
+      console.log('Parsing report...');
+      const data = parseReport(detected.path);
+
+      if (data.frictions.length === 0) {
+        console.log('No frictions found in the report. Nothing to annotate.');
+        return;
+      }
+
+      const result = await runInteractiveAnnotation(data.frictions);
+      console.log(`\nDone: ${result.annotated} annotated, ${result.skipped} skipped.`);
+
+      const annotations = loadAnnotations();
+      const fpCount = annotations.filter(a => a.status === 'false-positive').length;
+      if (fpCount > 0) {
+        console.log(`${fpCount} friction(s) will be skipped in future pipeline runs.`);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`\nError: ${message}`);

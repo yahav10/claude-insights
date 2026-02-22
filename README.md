@@ -2,7 +2,9 @@
 
 Standalone CLI tool that parses Claude Code `/insight` report HTML files and generates actionable output: a prioritized to-do list, CLAUDE.md rules, hook settings, MCP server recommendations, and custom skills -- all tailored to your specific usage patterns and friction points.
 
-**v1.1** adds auto-apply mode, trend tracking, watch mode, team aggregation, MCP recommendations, advanced hooks, and session facet enrichment.
+**v1.3** adds friction annotations & false-positive filtering, domain-classified skills with improved quality, and natural example phrasing.
+
+**v1.1** added auto-apply mode, trend tracking, watch mode, team aggregation, MCP recommendations, advanced hooks, and session facet enrichment.
 
 ## Install
 
@@ -48,6 +50,12 @@ claude-insights diff 2026-01-15 2026-02-15
 
 # Team aggregation -- combine multiple reports
 claude-insights team report1.html report2.html -o ./team-output
+
+# Annotate frictions -- mark false positives to filter from future runs
+claude-insights annotate                              # Interactive walkthrough
+claude-insights annotate --false-positive "CSS Issues" # Scriptable
+claude-insights annotate --list                       # Show annotations
+claude-insights annotate --clear                      # Clear all
 ```
 
 ### Auto-Detect
@@ -86,6 +94,11 @@ claude-insights analyze --apply -o ~/Documents/my-project
 | `history` | List past analysis runs |
 | `diff <date1> <date2>` | Compare two analysis runs by date |
 | `team <files...> -o <dir>` | Aggregate multiple team reports |
+| `annotate [file]` | Interactive friction annotation walkthrough |
+| `annotate --false-positive <title>` | Mark a friction as false-positive (skipped in future runs) |
+| `annotate --useful <title>` | Mark a friction as useful |
+| `annotate --list` | Show current annotations |
+| `annotate --clear [title]` | Clear one or all annotations |
 
 ## Flags Reference
 
@@ -123,6 +136,13 @@ Generated skills follow the [agentskills.io](https://agentskills.io) open standa
 ```
 
 Skills include YAML frontmatter (`name`, `description`, `allowed-tools`, `context`, `argument-hint`) and are compatible with Claude Code, Cursor, Codex CLI, and VS Code Copilot.
+
+Each generated skill includes:
+- **Three-part description**: What it does, when to use it (with concrete scenarios), and negative triggers to prevent misfires
+- **Domain-specific steps**: Tailored to the friction domain (CSS, debugging, testing, etc.)
+- **"What Goes Wrong" section**: Real failure narratives from your sessions that Claude pattern-matches against
+- **Verification checklist**: Gate that references past failures before task completion
+- **Domain-specific argument hints**: e.g. `<file-or-component-path>` for CSS, `<issue-description-or-log-path>` for debugging
 
 ## Auto-Apply Mode
 
@@ -226,13 +246,39 @@ claude-insights analyze report.html --apply
 3. **Skills**: Copy `.claude/skills/<skill-name>/` directories into your project's `.claude/skills/`
 4. **Test**: Start a new Claude Code session and invoke a generated skill on your next task
 
+## Friction Annotations
+
+Mark frictions as `useful` or `false-positive` to refine output over time. False-positive frictions are filtered out before skill/rule generation on subsequent runs.
+
+```bash
+# Interactive -- walk through each friction
+claude-insights annotate
+
+# Scriptable -- mark directly
+claude-insights annotate --false-positive "Debugging Wrong Root Causes"
+claude-insights annotate --useful "CSS Visual Styling Failures"
+
+# View and manage
+claude-insights annotate --list
+claude-insights annotate --clear "Debugging Wrong Root Causes"
+```
+
+On the next `analyze` run, filtered frictions are reported:
+```
+⚠️  1 friction(s) marked as false-positive (skipped)
+Found 2 friction areas across 47 sessions
+```
+
+Annotations persist at `~/.claude-insights/annotations.json` and use fuzzy title matching (80% word overlap) so minor rephrasing between reports doesn't break the match.
+
 ## How It Works
 
 1. **Parse**: Reads the HTML report using cheerio, extracting stats, project areas, frictions, wins, CLAUDE.md suggestions, features, patterns, and horizon items
-2. **Enrich** (optional): If `--facets` is set, parses session facet data (tool usage, session durations) and enriches the analysis
-3. **Analyze**: Derives a prioritized to-do list from frictions (High priority), CLAUDE.md rules (High), features (Medium), and patterns (Medium). Generates tailored skills, hooks, and MCP recommendations from friction + pattern data
-4. **Generate / Apply**: Writes output files to the chosen directory, or merges directly into the project with `--apply` (dedup-aware CLAUDE.md append, deep-merge settings, skill placement)
-5. **Track**: Saves a history entry to `~/.claude-insights/history/` and displays a trend report comparing with the previous run
+2. **Filter**: Removes frictions annotated as `false-positive` (see [Friction Annotations](#friction-annotations))
+3. **Enrich** (optional): If `--facets` is set, parses session facet data (tool usage, session durations) and enriches the analysis
+4. **Analyze**: Derives a prioritized to-do list from frictions (High priority), CLAUDE.md rules (High), features (Medium), and patterns (Medium). Generates domain-classified skills with tailored steps, "What Goes Wrong" failure narratives, and verification checklists
+5. **Generate / Apply**: Writes output files to the chosen directory, or merges directly into the project with `--apply` (dedup-aware CLAUDE.md append, deep-merge settings, skill placement)
+6. **Track**: Saves a history entry to `~/.claude-insights/history/` and displays a trend report comparing with the previous run
 
 ## Tech Stack
 

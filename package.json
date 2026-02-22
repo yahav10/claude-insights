@@ -1,7 +1,7 @@
 {
   "name": "claude-insights",
-  "version": "1.2.0",
-  "description": "CLI tool to analyze Claude Code /insight reports and generate actionable files",
+  "version": "1.3.0",
+  "description": "CLI that parses Claude Code /insight reports and generates tailored skills, CLAUDE.md rules, hooks, and todos — with false-positive annotation filtering, team aggregation, trend tracking, and auto-apply mode",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -29,9 +29,18 @@
   "keywords": [
     "claude",
     "claude-code",
+    "claude-insights",
     "insights",
     "cli",
-    "skills"
+    "skills",
+    "agent-skills",
+    "friction",
+    "annotations",
+    "developer-tools",
+    "productivity",
+    "automation",
+    "code-quality",
+    "ai-tools"
   ],
   "license": "MIT",
   "repository": {

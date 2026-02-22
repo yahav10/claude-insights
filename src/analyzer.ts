@@ -1,5 +1,49 @@
 import type { ReportData, AnalyzerOutput, TodoItem, SkillFile, FrictionCategory, ClaudeMdItem, PatternCard, HookConfig, HookEvent, McpRecommendation } from './types.js';
 
+export type FrictionDomain =
+  | 'css-styling' | 'testing' | 'debugging'
+  | 'data-sql' | 'imports-dependencies'
+  | 'architecture-scope' | 'general';
+
+const DOMAIN_KEYWORDS: [FrictionDomain, string[]][] = [
+  ['css-styling', ['css', 'styling', 'scoped', 'shadow dom', 'layout', 'visual', 'selector', 'pseudo']],
+  ['testing', ['test', 'mock', 'playwright', 'vitest', 'unit test', 'e2e', 'fixture', 'assertion']],
+  ['debugging', ['debug', 'root cause', 'reproduce', 'diagnostic', 'production', 'logging']],
+  ['data-sql', ['sql', 'query', 'database', 'table', 'data', 'migration', 'vertica', 'warehouse']],
+  ['imports-dependencies', ['import', 'build', 'compile', 'bundle', 'dependency', 'module resolution']],
+  ['architecture-scope', ['scope', 'boundary', 'architecture', 'module boundary', 'layer']],
+];
+
+/** Check if any keyword matches as a whole word (not as a substring of another word) */
+function matchesKeyword(text: string, keyword: string): boolean {
+  // Multi-word keywords (e.g. "shadow dom") use plain includes — they're specific enough
+  if (keyword.includes(' ')) return text.includes(keyword);
+  // Single-word keywords must match at word boundaries
+  const re = new RegExp(`\\b${keyword}\\b`);
+  return re.test(text);
+}
+
+/** Classify a friction into a domain based on title + description keywords.
+ *  Title matches are checked first (stronger signal) before falling back to description. */
+export function classifyFrictionDomain(friction: FrictionCategory): FrictionDomain {
+  const title = friction.title.toLowerCase();
+  const desc = friction.description.toLowerCase();
+
+  // Pass 1: title-only — strongest signal
+  for (const [domain, keywords] of DOMAIN_KEYWORDS) {
+    if (keywords.some(kw => matchesKeyword(title, kw))) {
+      return domain;
+    }
+  }
+  // Pass 2: description — weaker signal, only if title didn't match
+  for (const [domain, keywords] of DOMAIN_KEYWORDS) {
+    if (keywords.some(kw => matchesKeyword(desc, kw))) {
+      return domain;
+    }
+  }
+  return 'general';
+}
+
 export function analyze(data: ReportData): AnalyzerOutput {
   const skills = buildSkills(data);
   const todos = buildTodos(data, skills);
@@ -304,8 +348,10 @@ export function buildSkills(data: ReportData): SkillFile[] {
     const steps = buildSkillSteps(friction, matchingPattern);
     const rules = buildSkillRules(matchingRule, friction);
     const whenToUse = buildWhenToUse(friction);
+    const positiveExamples = buildPositiveExamples(friction);
     const examples = buildSkillExamples(friction.examples);
     const checklist = buildVerificationChecklist(friction);
+    const argHint = buildArgumentHint(friction);
 
     // Format description: use YAML block scalar for multi-line, inline for single-line
     const descYaml = description.includes('\n')
@@ -321,12 +367,14 @@ name: ${skillName}
 description: ${descYaml}
 allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 context: fork
-argument-hint: "<file-or-component-path>"
+argument-hint: "${argHint}"
 ---
 
 ## When to Use This Skill
 
 ${whenToUse}
+
+${positiveExamples}
 
 ## Steps
 
@@ -350,31 +398,78 @@ ${friction.description}
   return skills;
 }
 
-/** Build a multi-line trigger-rich description with scenario phrases */
-export function buildTriggerDescription(friction: FrictionCategory): string {
-  let desc = `Use when encountering ${friction.title.toLowerCase()}`;
+/** Condense a friction description into a short action-verb opener */
+function buildDescriptionOpener(friction: FrictionCategory): string {
+  const domain = classifyFrictionDomain(friction);
+  const verb = domain === 'debugging' ? 'Guards against'
+    : domain === 'testing' ? 'Catches'
+    : 'Prevents';
 
-  // Extract scenario phrases from examples for richer triggers
+  // Use friction title as the primary topic — it's more concise than the description
+  const titlePhrase = friction.title.toLowerCase();
+
+  // Try to extract a short qualifier from the description (first ~80 chars of first sentence)
+  const desc = friction.description.trim();
+  const firstSentence = desc.split(/\.\s/)[0].replace(/\.$/, '');
+  // Only use description as qualifier if it's short and doesn't start with narrative filler
+  const isNarrative = /^(a |the |your |claude |this |during )/i.test(firstSentence);
+  if (!isNarrative && firstSentence.length <= 100) {
+    const body = firstSentence.charAt(0).toLowerCase() + firstSentence.slice(1);
+    return `${verb} ${body}`;
+  }
+
+  // Fallback: use the title directly
+  return `${verb} ${titlePhrase}`;
+}
+
+/** Build a three-part description: [What it does] + [When to use it] + [Do NOT use for] */
+export function buildTriggerDescription(friction: FrictionCategory): string {
+  // Part 1: What it does
+  const opener = buildDescriptionOpener(friction);
+
+  // Part 2: When to use it
+  let trigger = `Use when encountering ${friction.title.toLowerCase()}`;
   const scenarios = friction.examples
     .map(extractScenarioPhrase)
     .filter((s): s is string => s !== null)
     .slice(0, 3);
 
   if (scenarios.length > 0) {
-    desc += `,\nespecially ${scenarios.join(', ')}`;
+    trigger += `, especially ${scenarios.join(', ')}`;
   } else {
-    // Fallback to keyword-based triggers if no parseable scenarios
     const titleWords = significantWords(friction.title);
     const triggerWords = extractTriggerTerms(friction)
       .filter(w => !titleWords.includes(w));
     const uniqueTerms = [...new Set(triggerWords)].slice(0, 5);
     if (uniqueTerms.length > 0) {
-      desc += `,\ninvolving ${uniqueTerms.join(', ')}`;
+      trigger += `, involving ${uniqueTerms.join(', ')}`;
     }
   }
+  trigger += '.';
 
-  desc += '.';
-  return desc;
+  // Part 3: Negative triggers
+  const negatives = buildNegativeTriggers(friction);
+  const negLine = `Do NOT use for ${negatives[0]}.`;
+
+  const desc = `${opener}.\n${trigger}\n${negLine}`;
+  // Enforce 1024 char limit from the guide
+  return desc.length > 1024 ? desc.slice(0, 1021) + '...' : desc;
+}
+
+const NEGATIVE_TRIGGER_MAP: Record<FrictionDomain, string[]> = {
+  'css-styling': ['simple color, font, or spacing tweaks with no scoping concerns'],
+  'testing': ['writing new feature code or non-test implementation'],
+  'debugging': ['known issues with obvious fixes that need no investigation'],
+  'data-sql': ['simple read-only queries or basic data lookups'],
+  'imports-dependencies': ['adding a single well-known dependency to one file'],
+  'architecture-scope': ['changes isolated to a single file with no cross-module impact'],
+  'general': ['tasks unrelated to the specific friction pattern described above'],
+};
+
+/** Generate negative trigger phrases to prevent skill over-triggering */
+export function buildNegativeTriggers(friction: FrictionCategory): string[] {
+  const domain = classifyFrictionDomain(friction);
+  return NEGATIVE_TRIGGER_MAP[domain];
 }
 
 /** Extract a short scenario phrase from a friction example */
@@ -419,15 +514,79 @@ const stopWordsSet = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 
   'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
   'not', 'no', 'without', 'before', 'after', 'about', 'that', 'this', 'it']);
 
-/** Build structured verify-first steps, with optional pattern prompt as starting context */
-export function buildSkillSteps(friction: FrictionCategory, pattern: PatternCard | undefined): string {
-  const steps: string[] = [];
+export type SkillPattern = 'sequential-workflow' | 'iterative-refinement' | 'domain-specific-intelligence';
 
-  steps.push(`**Diagnose**: Read the relevant files and map the existing patterns related to ${friction.title.toLowerCase()}. Identify boundaries, ownership, and current behavior before changing anything.`);
-  steps.push('**Identify constraints**: List what must NOT change, which components or modules are affected, and document your assumptions. Get confirmation before proceeding.');
-  steps.push('**Propose approach**: Describe your planned fix and explain why it avoids the known failure patterns listed in "What Goes Wrong" below. Wait for approval.');
-  steps.push('**Implement**: Apply the most minimal, narrowly-scoped change possible. Prefer the smallest edit that solves the problem.');
-  steps.push('**Verify**: Confirm the fix works AND doesn\'t regress related components. Check against each example in "What Goes Wrong". Run relevant tests.');
+const DOMAIN_PATTERN_MAP: Record<FrictionDomain, SkillPattern> = {
+  'css-styling': 'iterative-refinement',
+  'testing': 'sequential-workflow',
+  'debugging': 'domain-specific-intelligence',
+  'data-sql': 'sequential-workflow',
+  'imports-dependencies': 'sequential-workflow',
+  'architecture-scope': 'domain-specific-intelligence',
+  'general': 'sequential-workflow',
+};
+
+/** Map a friction domain to the appropriate skill pattern from the guide */
+export function mapDomainToPattern(domain: FrictionDomain): SkillPattern {
+  return DOMAIN_PATTERN_MAP[domain];
+}
+
+const DOMAIN_STEPS: Record<FrictionDomain, string[]> = {
+  'css-styling': [
+    '**Audit selectors**: Read the target file and list all CSS selectors, noting scoping boundaries (Shadow DOM, `:host`, scoped attributes).',
+    '**Map affected components**: Identify which sibling and parent components share styles or could be affected by selector changes.',
+    '**Apply scoped fix**: Make the narrowest possible CSS change. Prefer scoped selectors over global ones.',
+    '**Visual check**: Verify the fix renders correctly and no other components changed visually. Check against "What Goes Wrong" examples below.',
+    '**Refine if needed**: If the fix has side effects, narrow the selector further or add specificity constraints. Re-verify.',
+  ],
+  'testing': [
+    '**Read sibling tests**: Find and read existing test files in the same directory to match setup, teardown, and mock patterns.',
+    '**Run baseline**: Execute the current test suite to establish a passing baseline before making changes.',
+    '**Implement**: Write or modify tests following the patterns found in step 1. Match existing naming, structure, and assertion style.',
+    '**Run and verify**: Execute tests and confirm all pass, including the new or modified ones.',
+    '**Check coverage**: Verify the change covers the intended behavior and no tests were accidentally broken.',
+  ],
+  'debugging': [
+    '**Reproduce first**: Attempt to reproduce the issue locally with minimal setup before forming any hypothesis.',
+    '**Gather evidence**: Add targeted diagnostic logging or breakpoints to narrow down the root cause. Do not guess.',
+    '**Confirm root cause**: Document the confirmed root cause with evidence (logs, stack traces, test output). Do NOT hypothesize without proof.',
+    '**Apply targeted fix**: Fix only the confirmed root cause with the minimal change required.',
+    '**Verify fix and regression**: Confirm the fix resolves the issue AND run related tests to ensure no regressions.',
+  ],
+  'data-sql': [
+    '**Inspect schema**: Read the relevant table schemas and understand column types, relationships, and constraints.',
+    '**Validate query logic**: Review the SQL query for correctness — check joins, filters, group-by clauses, and aggregation logic.',
+    '**Test with sample data**: Run the query against a small dataset or use EXPLAIN to verify the execution plan.',
+    '**Implement fix**: Apply the corrected query with proper validation guards.',
+    '**Verify results**: Confirm the query returns expected results and does not introduce performance regressions.',
+  ],
+  'imports-dependencies': [
+    '**Check sibling conventions**: Read import statements in 3-5 sibling files to identify the project\'s import conventions.',
+    '**Verify module resolution**: Confirm the target module exists and its export signatures match the intended usage.',
+    '**Apply import change**: Modify imports following the conventions found in step 1.',
+    '**Build check**: Run the build process to verify no compilation or bundling errors.',
+    '**Verify runtime**: Confirm the imported functionality works correctly at runtime.',
+  ],
+  'architecture-scope': [
+    '**Map boundaries**: Identify the module boundaries, ownership, and dependency direction relevant to the change.',
+    '**Check scope constraints**: List explicitly what is in-scope and what must NOT change. Get confirmation before proceeding.',
+    '**Assess cross-cutting impact**: Determine if the change affects other modules, APIs, or contracts.',
+    '**Implement within bounds**: Apply the change strictly within the defined scope boundaries.',
+    '**Verify boundaries held**: Confirm no out-of-scope files were modified and no contracts were broken.',
+  ],
+  'general': [
+    '**Diagnose**: Read the relevant files and map existing patterns. Identify boundaries, ownership, and current behavior before changing anything.',
+    '**Identify constraints**: List what must NOT change and which components are affected. Get confirmation before proceeding.',
+    '**Propose approach**: Describe your planned fix and explain why it avoids the known failure patterns listed in "What Goes Wrong" below.',
+    '**Implement**: Apply the most minimal, narrowly-scoped change possible.',
+    '**Verify**: Confirm the fix works AND doesn\'t regress related components. Check against each example in "What Goes Wrong". Run relevant tests.',
+  ],
+};
+
+/** Build domain-specific steps based on friction classification and skill pattern */
+export function buildSkillSteps(friction: FrictionCategory, pattern: PatternCard | undefined): string {
+  const domain = classifyFrictionDomain(friction);
+  const steps = DOMAIN_STEPS[domain];
 
   let output = steps.map((s, i) => `${i + 1}. ${s}`).join('\n');
 
@@ -436,6 +595,123 @@ export function buildSkillSteps(friction: FrictionCategory, pattern: PatternCard
   }
 
   return output;
+}
+
+interface PositiveExampleTemplate {
+  request: string;
+  steps: string[];
+  result: string;
+}
+
+const POSITIVE_EXAMPLE_TEMPLATES: Record<FrictionDomain, PositiveExampleTemplate> = {
+  'css-styling': {
+    request: 'Fix the component styles — the dropdown is not visible',
+    steps: [
+      'Read the component file and list all CSS selectors and scoping boundaries',
+      'Identify which sibling components share styles that could be affected',
+      'Apply a scoped selector fix targeting only the dropdown',
+      'Verify the dropdown renders correctly and no other components changed',
+    ],
+    result: 'Dropdown is visible with scoped fix, no sibling components affected',
+  },
+  'testing': {
+    request: 'Fix the failing test suite for the authentication module',
+    steps: [
+      'Read sibling test files to understand existing mock and setup patterns',
+      'Run the current test suite to identify which tests fail and why',
+      'Update the test setup to match the patterns found in sibling files',
+      'Run all tests and confirm they pass including the fixed ones',
+    ],
+    result: 'All tests pass with consistent mock patterns, no regressions in related suites',
+  },
+  'debugging': {
+    request: 'The form submission silently fails in production — investigate',
+    steps: [
+      'Reproduce the issue locally with minimal setup',
+      'Add diagnostic logging to the form handler to narrow the root cause',
+      'Confirm the root cause with evidence from logs before proposing a fix',
+      'Apply a targeted fix addressing only the confirmed root cause',
+    ],
+    result: 'Root cause identified and fixed with evidence, form submission works correctly',
+  },
+  'data-sql': {
+    request: 'The report query returns incorrect totals for grouped data',
+    steps: [
+      'Inspect the relevant table schemas and column types',
+      'Review the SQL query for join, filter, and aggregation correctness',
+      'Test the corrected query against sample data to validate results',
+      'Apply the fix with proper validation guards',
+    ],
+    result: 'Query returns correct totals, execution plan verified for performance',
+  },
+  'imports-dependencies': {
+    request: 'The build fails after adding a new component import',
+    steps: [
+      'Check import conventions in 3-5 sibling files in the same directory',
+      'Verify the target module exists and its export signatures match',
+      'Fix the import to follow the project conventions found in step 1',
+      'Run the build to confirm no compilation errors',
+    ],
+    result: 'Build passes with correct import, following project conventions',
+  },
+  'architecture-scope': {
+    request: 'Refactor the payment module without affecting the checkout flow',
+    steps: [
+      'Map the module boundaries and identify which APIs are consumed by checkout',
+      'List explicitly what is in-scope and what must not change',
+      'Apply changes strictly within the payment module boundaries',
+      'Verify no out-of-scope files were modified and the checkout contract is intact',
+    ],
+    result: 'Payment module refactored, checkout flow unchanged, all contracts preserved',
+  },
+  'general': {
+    request: 'Fix the issue following the existing codebase patterns',
+    steps: [
+      'Read the relevant files and map existing patterns before making changes',
+      'Identify constraints — what must not change and which components are affected',
+      'Apply the most minimal, narrowly-scoped change possible',
+      'Verify the fix works and does not regress related components',
+    ],
+    result: 'Issue resolved with minimal change, existing patterns preserved',
+  },
+};
+
+/** Strip leading gerund verbs to avoid "Fix the issue with fixing..." redundancy */
+function stripLeadingGerund(phrase: string): string {
+  return phrase.replace(/^(fixing|debugging|implementing|configuring|diagnosing|adding|removing|updating|setting up|working on)\s+/i, '');
+}
+
+/** Build a positive workflow example showing how the skill is used successfully */
+export function buildPositiveExamples(friction: FrictionCategory): string {
+  const domain = classifyFrictionDomain(friction);
+  const template = POSITIVE_EXAMPLE_TEMPLATES[domain];
+
+  // Try to make the request more specific using friction examples
+  const scenario = extractScenarioPhrase(friction.examples[0] ?? '');
+  let request: string;
+  if (scenario) {
+    // Strip leading gerund to avoid "Fix the issue with fixing..." redundancy
+    const cleaned = stripLeadingGerund(scenario);
+    // Pick appropriate prefix based on what remains after stripping
+    if (/^why\b/i.test(cleaned)) {
+      request = `Investigate ${cleaned}`;
+    } else {
+      request = `Fix the ${cleaned}`;
+    }
+  } else {
+    request = template.request;
+  }
+
+  let md = '## Example Usage\n\n';
+  md += `> **Request**: "${request}"\n>\n`;
+  md += '> **Steps taken**:\n';
+  for (let i = 0; i < template.steps.length; i++) {
+    md += `> ${i + 1}. ${template.steps[i]}\n`;
+  }
+  md += '>\n';
+  md += `> **Result**: ${template.result}`;
+
+  return md;
 }
 
 /** Parse a CLAUDE.md rule into bullet points, with fallback rules from friction context */
@@ -499,6 +775,22 @@ export function buildSkillExamples(examples: string[]): string {
   return md;
 }
 
+const DOMAIN_ARGUMENT_HINTS: Record<FrictionDomain, string> = {
+  'css-styling': '<file-or-component-path>',
+  'testing': '<test-file-or-module-path>',
+  'debugging': '<issue-description-or-log-path>',
+  'data-sql': '<query-or-table-name>',
+  'imports-dependencies': '<module-or-package-path>',
+  'architecture-scope': '<module-or-boundary-path>',
+  'general': '<file-or-component-path>',
+};
+
+/** Return a domain-specific argument hint for the skill frontmatter */
+function buildArgumentHint(friction: FrictionCategory): string {
+  const domain = classifyFrictionDomain(friction);
+  return DOMAIN_ARGUMENT_HINTS[domain];
+}
+
 /** Bold key technical terms in example text for scanability */
 export function boldTechTerms(text: string): string {
   return text
@@ -554,6 +846,12 @@ export function buildWhenToUse(friction: FrictionCategory): string {
     if (descWords.length > 0) {
       triggers.push(`When previous attempts involved ${descWords.join(', ')} issues.`);
     }
+  }
+
+  // Negative triggers to prevent over-triggering
+  const negatives = buildNegativeTriggers(friction);
+  for (const neg of negatives) {
+    triggers.push(`Do NOT use for ${neg}.`);
   }
 
   return triggers.map(t => `- ${t}`).join('\n');

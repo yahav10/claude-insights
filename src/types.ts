@@ -177,6 +177,8 @@ export interface PipelineOptions {
   outputDir?: string;
   apply?: boolean;
   facets?: boolean;
+  skipAnnotationFilter?: boolean;
+  annotationsPath?: string;
 }
 
 export interface PipelineResult {
@@ -193,6 +195,20 @@ export interface WatchOptions {
 
 export interface WatchHandle {
   stop: () => void;
+}
+
+export type AnnotationStatus = 'useful' | 'false-positive';
+
+export interface FrictionAnnotation {
+  frictionTitle: string;
+  status: AnnotationStatus;
+  annotatedAt: string;
+  note?: string;
+}
+
+export interface AnnotationStore {
+  version: 1;
+  annotations: FrictionAnnotation[];
 }
 
 export interface TeamFriction {
