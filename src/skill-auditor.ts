@@ -531,27 +531,51 @@ export function discoverSkills(dir?: string): string[] {
 
   const stat = statSync(target);
 
-  // Direct path to SKILL.md
-  if (stat.isFile() && basename(target) === 'SKILL.md') {
+  // Direct path to any .md file
+  if (stat.isFile() && target.endsWith('.md')) {
     return [target];
   }
 
-  // Directory containing SKILL.md directly
+  // Directory — look for .md files
   if (stat.isDirectory()) {
+    // First check for SKILL.md directly (legacy convention)
     const directSkill = join(target, 'SKILL.md');
     if (existsSync(directSkill)) {
       return [directSkill];
     }
 
-    // Scan subdirectories for SKILL.md
+    // Check for any single .md file in this directory
+    try {
+      const entries = readdirSync(target, { withFileTypes: true });
+      const mdFiles = entries.filter(e => e.isFile() && e.name.endsWith('.md'));
+      if (mdFiles.length > 0) {
+        return mdFiles.map(e => join(target, e.name)).sort();
+      }
+    } catch {
+      // Permission errors — continue
+    }
+
+    // Scan subdirectories for .md files
     const results: string[] = [];
     try {
       const entries = readdirSync(target, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
+          // Prefer SKILL.md if it exists
           const skillPath = join(target, entry.name, 'SKILL.md');
           if (existsSync(skillPath)) {
             results.push(skillPath);
+            continue;
+          }
+          // Otherwise find .md files in the subdirectory
+          try {
+            const subEntries = readdirSync(join(target, entry.name), { withFileTypes: true });
+            const subMdFiles = subEntries.filter(e => e.isFile() && e.name.endsWith('.md'));
+            for (const md of subMdFiles) {
+              results.push(join(target, entry.name, md.name));
+            }
+          } catch {
+            // Permission errors — skip
           }
         }
       }

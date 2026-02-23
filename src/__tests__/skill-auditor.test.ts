@@ -345,6 +345,40 @@ describe('discoverSkills', () => {
     expect(results[0]).toBe(filePath);
   });
 
+  it('discovers any .md file by direct path', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ci-md-'));
+    const filePath = join(base, 'my-custom-skill.md');
+    writeFileSync(filePath, '---\nname: my-custom-skill\n---\n# Body\n');
+    const results = discoverSkills(filePath);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toBe(filePath);
+  });
+
+  it('discovers .md files in subdirectories (not just SKILL.md)', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ci-disc-md-'));
+    const skillsDir = join(base, 'skills');
+    mkdirSync(join(skillsDir, 'skill-a'), { recursive: true });
+    mkdirSync(join(skillsDir, 'skill-b'), { recursive: true });
+    writeFileSync(join(skillsDir, 'skill-a', 'my-skill.md'), '---\nname: skill-a\n---\n');
+    writeFileSync(join(skillsDir, 'skill-b', 'another.md'), '---\nname: skill-b\n---\n');
+
+    const results = discoverSkills(skillsDir);
+    expect(results).toHaveLength(2);
+    expect(results[0]).toContain('my-skill.md');
+    expect(results[1]).toContain('another.md');
+  });
+
+  it('discovers .md files directly in a directory', () => {
+    const base = mkdtempSync(join(tmpdir(), 'ci-flat-md-'));
+    writeFileSync(join(base, 'skill-one.md'), '---\nname: skill-one\n---\n');
+    writeFileSync(join(base, 'skill-two.md'), '---\nname: skill-two\n---\n');
+
+    const results = discoverSkills(base);
+    expect(results).toHaveLength(2);
+    expect(results[0]).toContain('skill-one.md');
+    expect(results[1]).toContain('skill-two.md');
+  });
+
   it('returns empty array for empty directory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ci-empty-'));
     const results = discoverSkills(dir);

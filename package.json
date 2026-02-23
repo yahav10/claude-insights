@@ -1,6 +1,6 @@
 {
   "name": "claude-insights",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "CLI that parses Claude Code /insight reports and generates tailored skills, CLAUDE.md rules, hooks, and todos — with false-positive annotation filtering, team aggregation, trend tracking, and auto-apply mode",
   "type": "module",
   "main": "dist/index.js",
