@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { parseReport } from './parser.js';
 import { analyze } from './analyzer.js';
 import { generate } from './generator.js';
@@ -12,14 +12,15 @@ import { detectReport, waitForReport, getDefaultReportPath } from './report-dete
 import { watchReport } from './watcher.js';
 import { aggregateReports, generateTeamOutput } from './team.js';
 import { filterAnnotatedFrictions, loadAnnotations, setAnnotation, clearAnnotation, formatAnnotationList, runInteractiveAnnotation } from './annotations.js';
-import type { ReportData } from './types.js';
+import { parseSkillFile, auditSkill, formatAuditReport, applyFixes, discoverSkills, runInteractiveAudit } from './skill-auditor.js';
+import type { ReportData, AuditResult } from './types.js';
 
 const program = new Command();
 
 program
   .name('claude-insights')
   .description('Analyze Claude Code /insight reports and generate actionable files')
-  .version('1.3.0');
+  .version('1.4.0');
 
 program
   .command('analyze')
@@ -365,6 +366,106 @@ program
       const fpCount = annotations.filter(a => a.status === 'false-positive').length;
       if (fpCount > 0) {
         console.log(`${fpCount} friction(s) will be skipped in future pipeline runs.`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`\nError: ${message}`);
+      process.exit(1);
+    }
+  });
+
+// ─── Skill Audit ───
+
+const skillCmd = program
+  .command('skill')
+  .description('Manage and audit skills');
+
+skillCmd
+  .command('audit')
+  .description('Audit SKILL.md files against Claude Skills Guide best practices')
+  .argument('[path]', 'Path to SKILL.md, skill folder, or skills directory')
+  .option('--fix', 'Apply recommended fixes automatically')
+  .option('--json', 'Output results as JSON for CI integration')
+  .action(async (path: string | undefined, opts: { fix?: boolean; json?: boolean }) => {
+    try {
+      // 1. Discover skills
+      const skillPaths = discoverSkills(path);
+
+      if (skillPaths.length === 0) {
+        const searchPath = path || '.claude/skills/';
+        console.error(`\nNo SKILL.md files found in: ${searchPath}`);
+        console.error('Provide a path to a SKILL.md file, a skill folder, or a directory containing skill folders.');
+        process.exit(1);
+      }
+
+      console.log(`\nFound ${skillPaths.length} skill(s) to audit.\n`);
+
+      // 2. Parse and audit each skill
+      const results: AuditResult[] = [];
+      for (const sp of skillPaths) {
+        const parsed = parseSkillFile(sp);
+        const result = auditSkill(parsed);
+        results.push(result);
+      }
+
+      // 3. JSON output mode
+      if (opts.json) {
+        const jsonOutput = results.map(r => ({
+          skill: r.skill.frontmatter.name || r.skill.folderName,
+          filePath: r.skill.filePath,
+          score: r.score,
+          fixableCount: r.fixableCount,
+          checks: r.checks.map(c => ({
+            id: c.id,
+            severity: c.severity,
+            passed: c.passed,
+            message: c.message,
+          })),
+        }));
+        console.log(JSON.stringify(jsonOutput, null, 2));
+
+        // Exit non-zero if any critical failures
+        const hasCritical = results.some(r => r.checks.some(c => c.severity === 'critical' && !c.passed));
+        if (hasCritical) process.exit(1);
+        return;
+      }
+
+      // 4. Auto-fix mode
+      if (opts.fix) {
+        let fixedCount = 0;
+        for (const result of results) {
+          console.log(formatAuditReport(result));
+          if (result.fixableCount > 0) {
+            const fixed = applyFixes(result.skill, result.checks);
+            writeFileSync(result.skill.filePath, fixed);
+            fixedCount++;
+            console.log(`  -> Fixed: ${result.skill.filePath}\n`);
+          }
+        }
+        if (fixedCount === 0) {
+          console.log('No fixable issues found.');
+        } else {
+          console.log(`\nFixed ${fixedCount} skill(s).`);
+        }
+        return;
+      }
+
+      // 5. Standard mode: print reports + interactive
+      for (const result of results) {
+        console.log(formatAuditReport(result));
+      }
+
+      // Summary
+      const totalFixable = results.reduce((sum, r) => sum + r.fixableCount, 0);
+      const avgScore = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length);
+      console.log(`\n── Summary ──────────────────────────`);
+      console.log(`  Skills audited: ${results.length}`);
+      console.log(`  Average score: ${avgScore}/100`);
+      console.log(`  Total fixable issues: ${totalFixable}`);
+
+      if (totalFixable > 0) {
+        const interactiveResult = await runInteractiveAudit(results);
+        console.log(`\nDone: ${interactiveResult.modified} modified, ${interactiveResult.copied} copied, ${interactiveResult.skipped} skipped.`);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

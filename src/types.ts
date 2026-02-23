@@ -234,3 +234,40 @@ export interface TeamReport {
   rules: TeamRule[];
   allReports: ReportData[];
 }
+
+// ─── Skill Audit Types ───
+
+export type AuditSeverity = 'critical' | 'high' | 'medium';
+
+export interface AuditCheck {
+  id: string;
+  name: string;
+  severity: AuditSeverity;
+  passed: boolean;
+  message: string;
+  suggestion?: string;
+  fixable?: boolean;
+}
+
+export interface ParsedSkill {
+  filePath: string;
+  folderName: string;
+  frontmatter: Record<string, string>;
+  frontmatterRaw: string;
+  body: string;
+  sections: SkillSection[];
+  wordCount: number;
+}
+
+export interface SkillSection {
+  heading: string;
+  content: string;
+  level: number;
+}
+
+export interface AuditResult {
+  skill: ParsedSkill;
+  checks: AuditCheck[];
+  score: number;
+  fixableCount: number;
+}
