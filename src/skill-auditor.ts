@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'node:fs';
 import { join, resolve, basename, dirname } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import type { AuditCheck, AuditResult, ParsedSkill, SkillSection } from './types.js';
+import type { AuditCheck, AuditResult, FixResult, ParsedSkill, SkillSection } from './types.js';
 
 // ─── Parsing ───
 
@@ -441,11 +441,12 @@ export function formatAuditReport(result: AuditResult): string {
 
 // ─── Fix Application ───
 
-export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
+export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): FixResult {
   const raw = readFileSync(parsed.filePath, 'utf-8');
   const failedFixable = checks.filter(c => !c.passed && c.fixable);
+  const changes: string[] = [];
 
-  if (failedFixable.length === 0) return raw;
+  if (failedFixable.length === 0) return { content: raw, changes };
 
   let content = raw;
   // Frontmatter MUST start at position 0 with ---\n — never match --- inside table borders
@@ -455,6 +456,7 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
   const fmInsertions: string[] = [];
   // Collect description amendments
   const descAmendments: string[] = [];
+  const descChangeLabels: string[] = [];
   // Collect body appendages
   const bodyAppendages: string[] = [];
 
@@ -462,22 +464,28 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
     switch (check.id) {
       case 'allowed-tools':
         fmInsertions.push('allowed-tools: ["Read", "Glob", "Grep", "Bash"]');
+        changes.push('Added allowed-tools: ["Read", "Glob", "Grep", "Bash"]');
         break;
       case 'has-metadata':
         fmInsertions.push('metadata:\n  author: your-team\n  version: 1.0.0');
+        changes.push('Added metadata block (author, version)');
         break;
       case 'description-negative':
         descAmendments.push('Do NOT use for tasks outside this skill\'s scope.');
+        descChangeLabels.push('negative triggers');
         break;
       case 'description-when':
         descAmendments.push('Use when you need to apply this skill\'s workflow.');
+        descChangeLabels.push('trigger phrases');
         break;
       case 'description-what':
         // Only if description truly has no verb — prepend a verb phrase
         descAmendments.push('Process and validate');
+        descChangeLabels.push('action verb');
         break;
       case 'has-troubleshooting':
         bodyAppendages.push('\n## Troubleshooting\n\n_TODO: Document common errors and fixes._\n');
+        changes.push('Added ## Troubleshooting section');
         break;
       case 'description-length':
         // Cannot auto-fix shortening — leave as suggestion only
@@ -499,6 +507,7 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
         const lastIndentedLine = blockContent.trimEnd();
         const newBlock = lastIndentedLine + ' ' + descLine;
         content = content.replace(blockContent, newBlock + '\n');
+        changes.push(`Appended to description: ${descChangeLabels.join(', ')}`);
       } else {
         // Inline description: append
         const inlineMatch = content.match(/(description:\s*)(.+)/);
@@ -506,6 +515,7 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
           const currentDesc = inlineMatch[2].trim();
           const newDesc = currentDesc.endsWith('.') ? `${currentDesc} ${descLine}` : `${currentDesc}. ${descLine}`;
           content = content.replace(inlineMatch[0], `${inlineMatch[1]}${newDesc}`);
+          changes.push(`Appended to description: ${descChangeLabels.join(', ')}`);
         }
       }
     }
@@ -546,6 +556,11 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
 
     const newFrontmatter = '---\n' + fmLines.join('\n') + '\n---\n\n';
     content = newFrontmatter + content;
+
+    // Single summary change for the entire frontmatter creation
+    const parts = [`name: ${kebabName}`, 'description derived from heading'];
+    if (descChangeLabels.length > 0) parts.push(descChangeLabels.join(', '));
+    changes.unshift(`Created YAML frontmatter (${parts.join(', ')})`);
   }
 
   // Apply body appendages
@@ -553,7 +568,7 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
     content = content.trimEnd() + '\n' + bodyAppendages.join('\n') + '\n';
   }
 
-  return content;
+  return { content, changes };
 }
 
 // ─── Discovery ───
@@ -651,17 +666,23 @@ export async function runInteractiveAudit(
     const choice = answer.trim().toLowerCase();
 
     if (choice === 'm' || choice === 'modify') {
-      const fixed = applyFixes(result.skill, result.checks);
+      const { content: fixed, changes } = applyFixes(result.skill, result.checks);
       writeFileSync(result.skill.filePath, fixed);
       modified++;
+      for (const change of changes) {
+        console.log(`    • ${change}`);
+      }
       console.log(`    -> Modified: ${result.skill.filePath}\n`);
     } else if (choice === 'c' || choice === 'copy') {
-      const fixed = applyFixes(result.skill, result.checks);
+      const { content: fixed, changes } = applyFixes(result.skill, result.checks);
       const improvedDir = join(dirname(dirname(result.skill.filePath)), `${name}-improved`);
       mkdirSync(improvedDir, { recursive: true });
       const improvedPath = join(improvedDir, 'SKILL.md');
       writeFileSync(improvedPath, fixed);
       copied++;
+      for (const change of changes) {
+        console.log(`    • ${change}`);
+      }
       console.log(`    -> Created improved copy: ${improvedPath}\n`);
     } else {
       skipped++;

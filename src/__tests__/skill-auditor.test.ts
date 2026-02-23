@@ -291,7 +291,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('fix-tools', 'name: fix-tools\ndescription: Migrate tests. Use when converting. Do NOT use for new.', '## Troubleshooting\n\nFix things.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```\n\nSee [refs](references/x.md)');
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     expect(fixed).toContain('allowed-tools:');
   });
 
@@ -299,7 +299,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('fix-neg', 'name: fix-neg\ndescription: Migrate tests. Use when converting.\nallowed-tools: ["Read"]\nmetadata:\n  author: x', '## Troubleshooting\n\nFix.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```\n\nSee [refs](references/x.md)');
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     expect(fixed).toContain('Do NOT use');
   });
 
@@ -307,7 +307,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('fix-trouble', 'name: fix-trouble\ndescription: Migrate tests. Use when converting. Do NOT use for new.\nallowed-tools: ["Read"]\nmetadata:\n  author: x', '## Step 1\n\n1. Do it\n\n```ts\ncode\n```\n\nSee [refs](references/x.md)');
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     expect(fixed).toContain('## Troubleshooting');
   });
 
@@ -315,9 +315,10 @@ describe('applyFixes', () => {
     const { filePath } = makeFullSkill('no-fix-needed');
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed, changes } = applyFixes(parsed, checks);
     const original = readFileSync(filePath, 'utf-8');
     expect(fixed).toBe(original);
+    expect(changes).toEqual([]);
   });
 
   it('does NOT corrupt files with no frontmatter (table border bug)', () => {
@@ -326,7 +327,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('table-test', '', body);
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     // Must NOT inject into table borders
     expect(fixed).not.toMatch(/\|---allowed-tools/);
     // Should create proper frontmatter at the start
@@ -341,7 +342,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('create-fm', '', body);
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     // Should have proper YAML frontmatter
     expect(fixed).toMatch(/^---\n/);
     expect(fixed).toContain('name: create-fm');
@@ -357,7 +358,7 @@ describe('applyFixes', () => {
     const { filePath } = makeSkillDir('desc-derive', '', body);
     const parsed = parseSkillFile(filePath);
     const checks = runChecks(parsed);
-    const fixed = applyFixes(parsed, checks);
+    const { content: fixed } = applyFixes(parsed, checks);
     expect(fixed).toContain('description: Review Code Quality.');
   });
 
@@ -369,7 +370,7 @@ describe('applyFixes', () => {
     expect(result1.score).toBe(0); // No frontmatter = critical fail
 
     // Apply fixes and write back
-    const fixed = applyFixes(parsed, result1.checks);
+    const { content: fixed } = applyFixes(parsed, result1.checks);
     writeFileSync(filePath, fixed);
 
     // Re-parse and re-audit
@@ -384,17 +385,48 @@ describe('applyFixes', () => {
 
     // First fix
     const parsed1 = parseSkillFile(filePath);
-    const fixed1 = applyFixes(parsed1, runChecks(parsed1));
+    const { content: fixed1 } = applyFixes(parsed1, runChecks(parsed1));
     writeFileSync(filePath, fixed1);
 
     // Second fix (should be idempotent or at least not corrupt)
     const parsed2 = parseSkillFile(filePath);
-    const fixed2 = applyFixes(parsed2, runChecks(parsed2));
+    const { content: fixed2 } = applyFixes(parsed2, runChecks(parsed2));
     // Should not have duplicate frontmatter blocks
     const fmCount = (fixed2.match(/^---$/gm) || []).length;
     expect(fmCount).toBeLessThanOrEqual(2); // Opening + closing = 2
     // Table should still be intact
     expect(fixed2).toContain('|---|---|');
+  });
+
+  it('returns changes array describing what was modified', () => {
+    // File with no frontmatter — should get multiple changes
+    const body = '# My Tool\n\nContent.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```';
+    const { filePath } = makeSkillDir('changes-test', '', body);
+    const parsed = parseSkillFile(filePath);
+    const checks = runChecks(parsed);
+    const { changes } = applyFixes(parsed, checks);
+    expect(changes.length).toBeGreaterThan(0);
+    // Should have the frontmatter creation message
+    expect(changes.some(c => c.includes('Created YAML frontmatter'))).toBe(true);
+    // Should mention allowed-tools
+    expect(changes.some(c => c.includes('allowed-tools'))).toBe(true);
+    // Should mention metadata
+    expect(changes.some(c => c.includes('metadata'))).toBe(true);
+    // Should mention troubleshooting
+    expect(changes.some(c => c.includes('Troubleshooting'))).toBe(true);
+  });
+
+  it('returns changes for existing frontmatter fixes', () => {
+    // File with frontmatter but missing some fields
+    const { filePath } = makeSkillDir('changes-existing', 'name: changes-existing\ndescription: Migrate tests. Use when converting.', '## Troubleshooting\n\nFix.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```\n\nSee [refs](references/x.md)');
+    const parsed = parseSkillFile(filePath);
+    const checks = runChecks(parsed);
+    const { changes } = applyFixes(parsed, checks);
+    expect(changes.length).toBeGreaterThan(0);
+    // Should mention appending to description (negative triggers)
+    expect(changes.some(c => c.includes('Appended to description'))).toBe(true);
+    // Should mention allowed-tools
+    expect(changes.some(c => c.includes('allowed-tools'))).toBe(true);
   });
 });
 

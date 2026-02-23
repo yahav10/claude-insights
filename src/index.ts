@@ -20,7 +20,7 @@ const program = new Command();
 program
   .name('claude-insights')
   .description('Analyze Claude Code /insight reports and generate actionable files')
-  .version('1.4.2');
+  .version('1.4.3');
 
 program
   .command('analyze')
@@ -436,9 +436,12 @@ skillCmd
         for (const result of results) {
           console.log(formatAuditReport(result));
           if (result.fixableCount > 0) {
-            const fixed = applyFixes(result.skill, result.checks);
+            const { content: fixed, changes } = applyFixes(result.skill, result.checks);
             writeFileSync(result.skill.filePath, fixed);
             fixedCount++;
+            for (const change of changes) {
+              console.log(`    • ${change}`);
+            }
             console.log(`  -> Fixed: ${result.skill.filePath}\n`);
           }
         }

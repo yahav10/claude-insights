@@ -271,3 +271,8 @@ export interface AuditResult {
   score: number;
   fixableCount: number;
 }
+
+export interface FixResult {
+  content: string;
+  changes: string[];
+}
