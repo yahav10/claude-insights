@@ -448,6 +448,8 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
   if (failedFixable.length === 0) return raw;
 
   let content = raw;
+  // Frontmatter MUST start at position 0 with ---\n — never match --- inside table borders
+  const hasFrontmatter = /^---\r?\n/.test(content);
 
   // Collect frontmatter insertions (before closing ---)
   const fmInsertions: string[] = [];
@@ -483,35 +485,67 @@ export function applyFixes(parsed: ParsedSkill, checks: AuditCheck[]): string {
     }
   }
 
-  // Apply description amendments (append to description value in frontmatter)
-  if (descAmendments.length > 0) {
-    const descLine = descAmendments.join(' ');
-    // Handle multi-line (block scalar |) description
-    const blockMatch = content.match(/(description:\s*\|[\r\n])([\s\S]*?)(\r?\n\w)/);
-    if (blockMatch) {
-      // Append to the last indented line of block scalar
-      const blockContent = blockMatch[2];
-      const lastIndentedLine = blockContent.trimEnd();
-      const newBlock = lastIndentedLine + ' ' + descLine;
-      content = content.replace(blockContent, newBlock + '\n');
-    } else {
-      // Inline description: append
-      const inlineMatch = content.match(/(description:\s*)(.+)/);
-      if (inlineMatch) {
-        const currentDesc = inlineMatch[2].trim();
-        const newDesc = currentDesc.endsWith('.') ? `${currentDesc} ${descLine}` : `${currentDesc}. ${descLine}`;
-        content = content.replace(inlineMatch[0], `${inlineMatch[1]}${newDesc}`);
+  if (hasFrontmatter) {
+    // ── Existing frontmatter: amend in place ──
+
+    // Apply description amendments (append to description value in frontmatter)
+    if (descAmendments.length > 0) {
+      const descLine = descAmendments.join(' ');
+      // Handle multi-line (block scalar |) description
+      const blockMatch = content.match(/(description:\s*\|[\r\n])([\s\S]*?)(\r?\n\w)/);
+      if (blockMatch) {
+        // Append to the last indented line of block scalar
+        const blockContent = blockMatch[2];
+        const lastIndentedLine = blockContent.trimEnd();
+        const newBlock = lastIndentedLine + ' ' + descLine;
+        content = content.replace(blockContent, newBlock + '\n');
+      } else {
+        // Inline description: append
+        const inlineMatch = content.match(/(description:\s*)(.+)/);
+        if (inlineMatch) {
+          const currentDesc = inlineMatch[2].trim();
+          const newDesc = currentDesc.endsWith('.') ? `${currentDesc} ${descLine}` : `${currentDesc}. ${descLine}`;
+          content = content.replace(inlineMatch[0], `${inlineMatch[1]}${newDesc}`);
+        }
       }
     }
-  }
 
-  // Apply frontmatter insertions (before closing ---)
-  if (fmInsertions.length > 0) {
-    const closingIdx = content.indexOf('---', content.indexOf('---') + 3);
-    if (closingIdx > 0) {
-      const insertion = fmInsertions.join('\n') + '\n';
-      content = content.slice(0, closingIdx) + insertion + content.slice(closingIdx);
+    // Apply frontmatter insertions (before closing ---)
+    if (fmInsertions.length > 0) {
+      // Find the closing --- after the opening --- (skip past the first line)
+      const firstNewline = content.indexOf('\n');
+      const closingIdx = content.indexOf('---', firstNewline + 1);
+      if (closingIdx > 0) {
+        const insertion = fmInsertions.join('\n') + '\n';
+        content = content.slice(0, closingIdx) + insertion + content.slice(closingIdx);
+      }
     }
+  } else {
+    // ── No frontmatter: create from scratch ──
+    const fmLines: string[] = [];
+
+    // Auto-derive name from parent folder (kebab-case)
+    const kebabName = parsed.folderName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (kebabName) {
+      fmLines.push(`name: ${kebabName}`);
+    }
+
+    // Build description from first H1 heading + amendments
+    const h1Match = parsed.body.match(/^#\s+(.+)/m);
+    let desc = h1Match ? h1Match[1].trim() : parsed.folderName;
+    if (descAmendments.length > 0) {
+      desc += '. ' + descAmendments.join(' ');
+    }
+    fmLines.push(`description: ${desc}`);
+
+    // Add fixable frontmatter fields
+    fmLines.push(...fmInsertions);
+
+    const newFrontmatter = '---\n' + fmLines.join('\n') + '\n---\n\n';
+    content = newFrontmatter + content;
   }
 
   // Apply body appendages

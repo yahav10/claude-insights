@@ -319,6 +319,83 @@ describe('applyFixes', () => {
     const original = readFileSync(filePath, 'utf-8');
     expect(fixed).toBe(original);
   });
+
+  it('does NOT corrupt files with no frontmatter (table border bug)', () => {
+    // This was the original bug: --- in markdown table borders was mistaken for frontmatter
+    const body = '# My Skill\n\n| Col A | Col B |\n|-------|-------|\n| a | b |\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```';
+    const { filePath } = makeSkillDir('table-test', '', body);
+    const parsed = parseSkillFile(filePath);
+    const checks = runChecks(parsed);
+    const fixed = applyFixes(parsed, checks);
+    // Must NOT inject into table borders
+    expect(fixed).not.toMatch(/\|---allowed-tools/);
+    // Should create proper frontmatter at the start
+    expect(fixed).toMatch(/^---\n/);
+    expect(fixed).toContain('allowed-tools:');
+    // Table should remain intact
+    expect(fixed).toContain('|-------|-------|');
+  });
+
+  it('creates frontmatter from scratch when none exists', () => {
+    const body = '# Test Skill\n\nSome content.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```';
+    const { filePath } = makeSkillDir('create-fm', '', body);
+    const parsed = parseSkillFile(filePath);
+    const checks = runChecks(parsed);
+    const fixed = applyFixes(parsed, checks);
+    // Should have proper YAML frontmatter
+    expect(fixed).toMatch(/^---\n/);
+    expect(fixed).toContain('name: create-fm');
+    expect(fixed).toContain('description:');
+    expect(fixed).toContain('allowed-tools:');
+    expect(fixed).toContain('metadata:');
+    // Should still contain original body
+    expect(fixed).toContain('# Test Skill');
+  });
+
+  it('derives description from first H1 heading when creating frontmatter', () => {
+    const body = '# Review Code Quality\n\nContent here.';
+    const { filePath } = makeSkillDir('desc-derive', '', body);
+    const parsed = parseSkillFile(filePath);
+    const checks = runChecks(parsed);
+    const fixed = applyFixes(parsed, checks);
+    expect(fixed).toContain('description: Review Code Quality.');
+  });
+
+  it('created frontmatter improves audit score on re-parse', () => {
+    const body = '# Fix Bugs\n\nContent.\n\n## Step 1\n\n1. Do it\n\n```ts\ncode\n```\n\nSee [refs](references/x.md)';
+    const { filePath } = makeSkillDir('re-audit', '', body);
+    const parsed = parseSkillFile(filePath);
+    const result1 = auditSkill(parsed);
+    expect(result1.score).toBe(0); // No frontmatter = critical fail
+
+    // Apply fixes and write back
+    const fixed = applyFixes(parsed, result1.checks);
+    writeFileSync(filePath, fixed);
+
+    // Re-parse and re-audit
+    const parsed2 = parseSkillFile(filePath);
+    const result2 = auditSkill(parsed2);
+    expect(result2.score).toBeGreaterThan(0); // Should now have a real score
+  });
+
+  it('fix is idempotent — re-running does not corrupt', () => {
+    const body = '# My Skill\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n## Step 1\n\n1. Do\n\n```ts\nx\n```';
+    const { filePath } = makeSkillDir('idempotent', '', body);
+
+    // First fix
+    const parsed1 = parseSkillFile(filePath);
+    const fixed1 = applyFixes(parsed1, runChecks(parsed1));
+    writeFileSync(filePath, fixed1);
+
+    // Second fix (should be idempotent or at least not corrupt)
+    const parsed2 = parseSkillFile(filePath);
+    const fixed2 = applyFixes(parsed2, runChecks(parsed2));
+    // Should not have duplicate frontmatter blocks
+    const fmCount = (fixed2.match(/^---$/gm) || []).length;
+    expect(fmCount).toBeLessThanOrEqual(2); // Opening + closing = 2
+    // Table should still be intact
+    expect(fixed2).toContain('|---|---|');
+  });
 });
 
 // ─── discoverSkills ───
