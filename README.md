@@ -1,74 +1,66 @@
-# claude-insights
+<div align="center">
 
-Standalone CLI tool that parses Claude Code `/insight` report HTML files and generates actionable output: a prioritized to-do list, CLAUDE.md rules, hook settings, MCP server recommendations, and custom skills -- all tailored to your specific usage patterns and friction points.
+# 🔬 claude-insights
 
-**v1.4** adds `skill audit` — validate any SKILL.md against the official Claude Skills Guide, get a scored report with actionable suggestions, and auto-fix common issues.
+**Turn your Claude Code `/insight` reports into actionable improvements.**
 
-**v1.3** adds friction annotations & false-positive filtering, domain-classified skills with improved quality, and natural example phrasing.
+Parses insight HTML reports and generates prioritized to-dos, CLAUDE.md rules,
+hook settings, MCP server recommendations, and custom skills — all tailored to your usage patterns.
 
-**v1.1** added auto-apply mode, trend tracking, watch mode, team aggregation, MCP recommendations, advanced hooks, and session facet enrichment.
+[![npm version](https://img.shields.io/npm/v/claude-insights?color=blue&label=npm)](https://www.npmjs.com/package/claude-insights)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-brightgreen)](https://nodejs.org)
 
-## Install
+</div>
+
+---
+
+## ⚡ Quick Start
 
 ```bash
-# Global install (recommended)
+# Install globally
 npm install -g claude-insights
 
-# Or run from source
-cd claude-insights
-npm install
-npm run build
+# Auto-detect report and apply improvements
+claude-insights analyze --apply
 ```
 
-## Usage
+That's it. Your CLAUDE.md, settings, and skills are updated automatically.
+
+---
+
+## ✨ What's New
+
+| Version | Highlights |
+|---------|-----------|
+| **v1.4** | 🔍 `skill audit` — validate SKILL.md files against the Claude Skills Guide, scored reports, auto-fix |
+| **v1.3** | 🏷️ Friction annotations & false-positive filtering, domain-classified skills, natural examples |
+| **v1.1** | 🚀 Auto-apply, trend tracking, watch mode, team aggregation, MCP recommendations, advanced hooks |
+
+---
+
+## 🛠️ Usage
 
 ```bash
-# Auto-detect report and apply (simplest usage)
-claude-insights analyze --apply
-
-# Standard mode -- generate output files to a directory
+# Standard mode — generate output files
 claude-insights analyze path/to/report.html -o ./my-project
 
-# Auto-apply mode -- merges directly into your project
+# Auto-apply — merge directly into your project (dedup-aware)
 claude-insights analyze path/to/report.html --apply
 
-# With session facet data enrichment
+# With session facet enrichment
 claude-insights analyze path/to/report.html --apply --facets
 
-# Wait for report to appear (while /insight is running in Claude Code)
+# Wait for report (while /insight runs in Claude Code)
 claude-insights analyze --wait --apply
 
-# Wait with custom timeout (600 seconds)
-claude-insights analyze --wait 600 -o ./my-project
-
-# Watch mode -- re-run on report changes
+# Watch mode — re-run on report changes
 claude-insights watch path/to/report.html -o ./my-project
-
-# View past analysis history
-claude-insights history
-
-# Compare two analysis runs
-claude-insights diff 2026-01-15 2026-02-15
-
-# Team aggregation -- combine multiple reports
-claude-insights team report1.html report2.html -o ./team-output
-
-# Annotate frictions -- mark false positives to filter from future runs
-claude-insights annotate                              # Interactive walkthrough
-claude-insights annotate --false-positive "CSS Issues" # Scriptable
-claude-insights annotate --list                       # Show annotations
-claude-insights annotate --clear                      # Clear all
-
-# Audit skills -- validate SKILL.md files against best practices
-claude-insights skill audit                           # Auto-detect .claude/skills/
-claude-insights skill audit .claude/skills/my-skill/  # Audit one skill
-claude-insights skill audit --fix                     # Auto-fix all fixable issues
-claude-insights skill audit --json                    # JSON output for CI
 ```
 
-### Auto-Detect
+### 🔎 Auto-Detect
 
-When no file argument is given, the CLI automatically looks for the report at `~/.claude/usage-data/report.html`. If found, it runs the analysis. If not, it prints instructions for generating one with `/insight`.
+When no file is given, the CLI looks for the report at `~/.claude/usage-data/report.html` automatically.
 
 ```bash
 # These are equivalent:
@@ -76,65 +68,68 @@ claude-insights analyze
 claude-insights analyze ~/.claude/usage-data/report.html
 ```
 
-### Wait Mode
+---
 
-Use `--wait` to have the CLI watch for the report to appear. This is useful when you run `/insight` in Claude Code and want the analysis to start automatically once it finishes:
-
-```bash
-claude-insights analyze --wait --apply
-```
-
-### Example
-
-```bash
-claude-insights analyze --apply -o ~/Documents/my-project
-```
-
-## Commands Reference
+## 📋 Commands
 
 | Command | Description |
 |---------|-------------|
-| `analyze [file]` | Parse report and generate output files (auto-detects default path) |
-| `analyze [file] --apply` | Parse and auto-merge into project (dedup-aware) |
-| `analyze [file] --facets` | Enrich analysis with session facet data |
-| `analyze --wait` | Wait for report to appear, then analyze (default 300s timeout) |
-| `watch <file> -o <dir>` | Watch report file and re-run on changes |
-| `history` | List past analysis runs |
-| `diff <date1> <date2>` | Compare two analysis runs by date |
-| `team <files...> -o <dir>` | Aggregate multiple team reports |
-| `annotate [file]` | Interactive friction annotation walkthrough |
-| `annotate --false-positive <title>` | Mark a friction as false-positive (skipped in future runs) |
-| `annotate --useful <title>` | Mark a friction as useful |
-| `annotate --list` | Show current annotations |
-| `annotate --clear [title]` | Clear one or all annotations |
-| `skill audit [path]` | Audit SKILL.md files against Claude Skills Guide best practices |
-| `skill audit --fix` | Auto-apply recommended fixes to SKILL.md files |
-| `skill audit --json` | Output audit results as JSON (exit code 1 on critical failures) |
+| 📊 `analyze [file]` | Parse report and generate output files |
+| 🔄 `analyze [file] --apply` | Parse and auto-merge into project (dedup-aware) |
+| 📈 `analyze [file] --facets` | Enrich with session facet data |
+| ⏳ `analyze --wait` | Wait for report to appear, then analyze |
+| 👀 `watch <file> -o <dir>` | Watch report file and re-run on changes |
+| 📜 `history` | List past analysis runs |
+| 🔀 `diff <date1> <date2>` | Compare two analysis runs by date |
+| 👥 `team <files...> -o <dir>` | Aggregate multiple team reports |
+| 🏷️ `annotate` | Interactive friction annotation walkthrough |
+| 🔍 `skill audit [path]` | Audit SKILL.md files against best practices |
+| 🔧 `skill audit --fix` | Auto-fix all fixable issues |
 
-## Flags Reference
+### Flags
 
 | Flag | Commands | Description |
 |------|----------|-------------|
-| `-o, --output-dir <path>` | analyze, watch | Output directory for generated files |
-| `--apply` | analyze, watch | Merge directly into project (dedup-aware) |
-| `--facets [dir]` | analyze, watch | Include session facet data from `~/.claude/usage-data/facets/` or a custom directory |
-| `--wait [seconds]` | analyze | Wait for report to appear before analyzing (default 300s) |
+| `-o, --output-dir <path>` | analyze, watch | Output directory |
+| `--apply` | analyze, watch | Merge directly into project |
+| `--facets [dir]` | analyze, watch | Include session facet data |
+| `--wait [seconds]` | analyze | Wait for report (default 300s) |
 
-## Output Files
+---
 
-| File | Description |
-|------|-------------|
-| `insights-todo.md` | Prioritized task table with steps, estimated time, and expected friction reduction |
-| `CLAUDE.md-additions.md` | Ready-to-paste CLAUDE.md rules organized by section (General, CSS, Testing, Debugging) |
-| `.claude/settings-insights.json` | Hook configurations and MCP server recommendations |
-| `.claude/skills/<skill-name>/SKILL.md` | Generated skills following the Agent Skills directory standard |
-| `insights-README.md` | Placement guide for generated files |
+## 📦 Output Files
 
-Trend tracking history is cached at `~/.claude-insights/history/` as dated JSON files.
+| File | What it gives you |
+|------|-------------------|
+| 📝 `insights-todo.md` | Prioritized task table with steps, time estimates, and friction reduction |
+| 📜 `CLAUDE.md-additions.md` | Ready-to-paste rules organized by section (General, CSS, Testing, Debugging) |
+| ⚙️ `.claude/settings-insights.json` | Hook configurations and MCP server recommendations |
+| 🎯 `.claude/skills/<name>/SKILL.md` | Generated skills following the Agent Skills standard |
+| 📖 `insights-README.md` | Placement guide for generated files |
 
-## Agent Skills Standard
+---
 
-Generated skills follow the [agentskills.io](https://agentskills.io) open standard. Each skill lives in its own directory:
+## 🔄 Auto-Apply Mode
+
+Use `--apply` to merge output directly into your project:
+
+```bash
+claude-insights analyze report.html --apply -o ./my-project
+```
+
+| Target | Behavior |
+|--------|----------|
+| **CLAUDE.md** | Appends new rules under `## Claude Insights Additions`. 80% word-overlap dedup — existing rules are skipped |
+| **settings.json** | Deep-merges into `.claude/settings.json`. Hooks merge by event key, MCP servers by name |
+| **Skills** | Placed into `.claude/skills/<name>/SKILL.md`. Overwrites on update |
+
+> Safe to run multiple times. Duplicates are detected and skipped.
+
+---
+
+## 🎯 Agent Skills
+
+Generated skills follow the [agentskills.io](https://agentskills.io) open standard:
 
 ```
 .claude/skills/
@@ -146,200 +141,171 @@ Generated skills follow the [agentskills.io](https://agentskills.io) open standa
     SKILL.md
 ```
 
-Skills include YAML frontmatter (`name`, `description`, `allowed-tools`, `context`, `argument-hint`) and are compatible with Claude Code, Cursor, Codex CLI, and VS Code Copilot.
+Each skill includes:
+- **Three-part description** — what, when to use (with scenarios), and negative triggers
+- **Domain-specific steps** — tailored to the friction domain (CSS, debugging, testing)
+- **"What Goes Wrong" section** — real failure narratives from your sessions
+- **Verification checklist** — gates that reference past failures before completion
+- **Argument hints** — e.g. `<file-or-component-path>` for CSS skills
 
-Each generated skill includes:
-- **Three-part description**: What it does, when to use it (with concrete scenarios), and negative triggers to prevent misfires
-- **Domain-specific steps**: Tailored to the friction domain (CSS, debugging, testing, etc.)
-- **"What Goes Wrong" section**: Real failure narratives from your sessions that Claude pattern-matches against
-- **Verification checklist**: Gate that references past failures before task completion
-- **Domain-specific argument hints**: e.g. `<file-or-component-path>` for CSS, `<issue-description-or-log-path>` for debugging
+Compatible with Claude Code, Cursor, Codex CLI, and VS Code Copilot.
 
-## Auto-Apply Mode
+---
 
-Use `--apply` to merge generated output directly into your project instead of writing separate files:
+## 🔍 Skill Audit
 
-```bash
-claude-insights analyze report.html --apply -o ./my-project
-```
-
-What `--apply` does:
-
-- **CLAUDE.md**: Appends new rules under a `## Claude Insights Additions` section. Deduplication uses 80% significant-word overlap -- rules that already exist are skipped.
-- **settings.json**: Deep-merges into `.claude/settings.json`. Hooks are merged by event key, MCP servers by server name. Existing entries are preserved.
-- **Skills**: Placed directly into `.claude/skills/<skill-name>/SKILL.md`. Overwrites on update.
-
-Safe to run multiple times. Duplicate rules and hooks are detected and skipped.
-
-## Trend Tracking
-
-Every analysis run is saved to `~/.claude-insights/history/`. Use the built-in commands to track progress over time:
+Validate any SKILL.md against the official Claude Skills Guide:
 
 ```bash
-# List all past runs
-claude-insights history
-
-# Compare two runs by date
-claude-insights diff 2026-01-15 2026-02-15
+claude-insights skill audit                    # Auto-detect .claude/skills/
+claude-insights skill audit path/to/skill/     # Audit one skill
+claude-insights skill audit --fix              # Auto-fix all fixable issues
+claude-insights skill audit --json             # JSON output for CI
 ```
 
-The trend report shows:
-- Friction count changes (resolved vs. new)
-- Which specific friction patterns appeared or disappeared
-- Directional summary (friction reduced, increased, or unchanged)
+### 17 Checks Across Three Severity Tiers
 
-## Watch Mode
+| Severity | Impact | Examples |
+|----------|--------|----------|
+| 🔴 **Critical** (score = 0) | Missing frontmatter, invalid name, reserved name, XML in frontmatter | 7 checks |
+| 🟡 **High** (-10 each) | Missing action verb, triggers, negative triggers, steps, examples | 6 checks |
+| 🟢 **Medium** (-5 each) | Missing metadata, troubleshooting, word count, file references | 4 checks |
 
-Re-runs the analysis pipeline automatically when the report file changes. Uses a 300ms debounce to avoid redundant runs.
+### Fix Mode
+
+`--fix` surgically modifies SKILL.md files — only inserts or appends, never deletes:
+- **Frontmatter**: Injects `allowed-tools`, `metadata` fields
+- **Description**: Appends negative triggers
+- **Body**: Appends `## Troubleshooting` section
+
+---
+
+## 📈 Trend Tracking
+
+Every analysis is saved to `~/.claude-insights/history/`:
 
 ```bash
-claude-insights watch ~/.claude/usage-data/report.html -o ./my-project
-
-# Or with auto-apply
-claude-insights watch ~/.claude/usage-data/report.html --apply -o ./my-project
+claude-insights history                     # List past runs
+claude-insights diff 2026-01-15 2026-02-15  # Compare two runs
 ```
 
-Stop with `Ctrl+C`.
+Shows friction count changes, resolved vs. new patterns, and directional summary.
 
-## Team Mode
+---
 
-Aggregate multiple `/insight` reports into shared team insights. Requires at least 2 report files.
+## 👥 Team Mode
+
+Aggregate multiple `/insight` reports into shared team insights:
 
 ```bash
-claude-insights team alice-report.html bob-report.html carol-report.html -o ./team-output
+claude-insights team alice.html bob.html carol.html -o ./team-output
 ```
 
-Team aggregation:
-- Identifies **shared frictions** that appear across multiple team members, with member attribution and count
-- Rules appearing in 2+ reports receive **higher priority** in the output
-- Generates a combined set of skills, todos, and CLAUDE.md rules covering the full team
+- Identifies **shared frictions** across team members with attribution
+- Rules in 2+ reports receive **higher priority**
+- Generates combined skills, todos, and CLAUDE.md rules
 
-## MCP Server Recommendations
+---
 
-The analyzer maps your friction patterns to relevant MCP servers from a built-in registry (Playwright, PostgreSQL, Fetch, Filesystem, Git). When a friction matches, the output includes:
+## 🏷️ Friction Annotations
+
+Refine output over time by marking frictions:
+
+```bash
+claude-insights annotate                              # Interactive walkthrough
+claude-insights annotate --false-positive "CSS Issues" # Mark as false positive
+claude-insights annotate --useful "Debugging Failures" # Mark as useful
+claude-insights annotate --list                       # View annotations
+claude-insights annotate --clear                      # Clear all
+```
+
+False-positive frictions are filtered from future runs. Annotations persist at `~/.claude-insights/annotations.json` with fuzzy 80% word-overlap matching.
+
+---
+
+## 🔌 MCP Server Recommendations
+
+The analyzer maps friction patterns to relevant MCP servers (Playwright, PostgreSQL, Fetch, Filesystem, Git):
 
 - Server description and install command
-- Ready-to-paste config block for `.claude/settings.json` under `mcpServers`
-- List of matched frictions explaining why the server was recommended
+- Ready-to-paste config for `.claude/settings.json`
+- Matched frictions explaining why it was recommended
 
-In `--apply` mode, MCP server configs are merged into `settings.json` automatically (existing servers are not overwritten).
+In `--apply` mode, MCP configs are merged automatically (existing servers preserved).
 
-## Advanced Hooks
+---
 
-Hooks are generated from friction patterns across Claude Code lifecycle events:
+## ⚙️ Advanced Hooks
 
-| Event | Trigger |
-|-------|---------|
-| `PreToolUse` | Before Claude uses a tool (e.g., check patterns before editing CSS) |
+Hooks are generated from friction patterns across lifecycle events:
+
+| Event | When it fires |
+|-------|--------------|
+| `PreToolUse` | Before Claude uses a tool (e.g., check patterns before CSS edits) |
 | `PostToolUse` | After tool use (e.g., run tests after edits) |
 | `Stop` | Before completing a task (e.g., verify root cause evidence) |
 
-Each hook targets a specific friction category. In `--apply` mode, hooks are deep-merged by event key -- existing hooks are preserved, duplicates are skipped.
+In `--apply` mode, hooks deep-merge by event key — existing hooks preserved.
 
-## Using as a Claude Code Skill
+---
 
-The `skills/analyze-insights/` directory contains a ready-to-use Claude Code skill. To install:
+## 🔧 How It Works
 
-1. Copy the `skills/` directory into your project's `.claude/` directory
-2. Start a new Claude Code session
-3. Run `/analyze-insights <path-to-report.html>`
+```
+Report HTML ──▶ Parse (cheerio) ──▶ Filter (annotations) ──▶ Enrich (facets)
+     │
+     ▼
+  Analyze ──▶ Prioritized todos, CLAUDE.md rules, skills, hooks, MCP configs
+     │
+     ▼
+  Generate / Apply ──▶ Write files or merge into project (dedup-aware)
+     │
+     ▼
+  Track ──▶ Save history, show trend report vs. previous run
+```
 
-## Placement Guide
+## ⚙️ Tech Stack
 
-**Preferred**: Use `--apply` mode for automatic, dedup-aware placement:
+| Component | Technology |
+|-----------|-----------|
+| 🔍 HTML Parsing | cheerio |
+| 💻 CLI | Commander.js |
+| 💬 Prompts | node:readline |
+| 👀 File Watching | node:fs watch |
+| 🧪 Testing | Vitest |
+| 📝 Language | TypeScript, Node.js 20+ |
+
+---
+
+## 📖 Placement Guide
+
+**Preferred** — automatic with dedup:
 ```bash
 claude-insights analyze report.html --apply
 ```
 
-**Manual**: If you prefer to review before placing:
-1. **CLAUDE.md**: Copy rules from `CLAUDE.md-additions.md` into your project's root `CLAUDE.md`
-2. **Settings**: Merge `settings-insights.json` into your existing `.claude/settings.json`
-3. **Skills**: Copy `.claude/skills/<skill-name>/` directories into your project's `.claude/skills/`
-4. **Test**: Start a new Claude Code session and invoke a generated skill on your next task
+**Manual** — review before placing:
+1. Copy rules from `CLAUDE.md-additions.md` into your `CLAUDE.md`
+2. Merge `settings-insights.json` into `.claude/settings.json`
+3. Copy `.claude/skills/` directories into your project
+4. Start a new Claude Code session and test
 
-## Friction Annotations
+---
 
-Mark frictions as `useful` or `false-positive` to refine output over time. False-positive frictions are filtered out before skill/rule generation on subsequent runs.
+## 🤝 Contributing
 
-```bash
-# Interactive -- walk through each friction
-claude-insights annotate
+Contributions welcome! Feel free to open issues or submit pull requests.
 
-# Scriptable -- mark directly
-claude-insights annotate --false-positive "Debugging Wrong Root Causes"
-claude-insights annotate --useful "CSS Visual Styling Failures"
+## 📄 License
 
-# View and manage
-claude-insights annotate --list
-claude-insights annotate --clear "Debugging Wrong Root Causes"
-```
+MIT
 
-On the next `analyze` run, filtered frictions are reported:
-```
-⚠️  1 friction(s) marked as false-positive (skipped)
-Found 2 friction areas across 47 sessions
-```
+---
 
-Annotations persist at `~/.claude-insights/annotations.json` and use fuzzy title matching (80% word overlap) so minor rephrasing between reports doesn't break the match.
+<div align="center">
 
-## Skill Audit
+**Built with ❤️ for the Claude Code community**
 
-Validate any SKILL.md file against the official Claude Skills Guide best practices. Works on skills generated by `claude-insights` or hand-written ones.
+*Stop repeating mistakes. Start learning from them.*
 
-```bash
-# Audit all skills in default location
-claude-insights skill audit
-
-# Audit a specific skill or directory
-claude-insights skill audit .claude/skills/my-skill/
-
-# Auto-fix all fixable issues
-claude-insights skill audit --fix
-
-# JSON output for CI pipelines (exit code 1 on critical failures)
-claude-insights skill audit --json
-```
-
-### Checks (17 total)
-
-The audit runs 17 checks across three severity tiers:
-
-| Severity | Impact | Checks |
-|----------|--------|--------|
-| **Critical** (score = 0) | Missing frontmatter, invalid name, missing description, XML in frontmatter, reserved name | 7 checks |
-| **High** (-10 each) | Missing action verb, trigger phrases, negative triggers, allowed-tools, steps, examples | 6 checks |
-| **Medium** (-5 each) | Missing metadata, troubleshooting section, word count, file references | 4 checks |
-
-### Fix Mode
-
-`--fix` surgically modifies SKILL.md files to resolve fixable issues. It only inserts or appends — never deletes or reorders existing content:
-
-- **Frontmatter**: Injects `allowed-tools`, `metadata` fields
-- **Description**: Appends negative triggers ("Do NOT use for...")
-- **Body**: Appends a `## Troubleshooting` section
-
-### Interactive Mode
-
-Without `--fix`, the standard mode prints audit reports and then offers an interactive prompt for each skill with fixable issues:
-
-- **[M]odify existing**: Apply fixes in-place
-- **[C]reate improved copy**: Write fixed version to `<skill-name>-improved/SKILL.md`
-- **[S]kip**: Leave unchanged
-
-## How It Works
-
-1. **Parse**: Reads the HTML report using cheerio, extracting stats, project areas, frictions, wins, CLAUDE.md suggestions, features, patterns, and horizon items
-2. **Filter**: Removes frictions annotated as `false-positive` (see [Friction Annotations](#friction-annotations))
-3. **Enrich** (optional): If `--facets` is set, parses session facet data (tool usage, session durations) and enriches the analysis
-4. **Analyze**: Derives a prioritized to-do list from frictions (High priority), CLAUDE.md rules (High), features (Medium), and patterns (Medium). Generates domain-classified skills with tailored steps, "What Goes Wrong" failure narratives, and verification checklists
-5. **Generate / Apply**: Writes output files to the chosen directory, or merges directly into the project with `--apply` (dedup-aware CLAUDE.md append, deep-merge settings, skill placement)
-6. **Track**: Saves a history entry to `~/.claude-insights/history/` and displays a trend report comparing with the previous run
-
-## Tech Stack
-
-- Node.js 20+, TypeScript
-- cheerio (HTML parsing)
-- commander (CLI arguments)
-- node:readline (interactive prompts)
-- node:fs `watch` (watch mode)
-- vitest (testing)
+</div>
